@@ -263,6 +263,7 @@ export function DashboardView({ model, onHide }: { model: AzTrayModel; onHide: (
             <div className="sidebar-bottom"><span className="eyebrow">DATA DIRECTORY</span><code>{model.snapshot?.config.dataDirectory || "Using Azurite default"}</code></div>
           </aside>
           <section className="dashboard-content">
+            <EngineBanner model={model} />
             {selected ? <ServiceDetail model={model} service={selected} ask={ask} /> : <EmptyDashboard model={model} />}
           </section>
         </>}

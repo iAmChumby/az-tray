@@ -638,7 +638,7 @@ fn resolve_azurite_probe(config: &Config) -> Option<(String, String)> {
     if let Some(path) = config.executable_path.as_deref() {
         let path = PathBuf::from(path);
         let candidate = if path.is_dir() { find_in_directory(&path, "blob")? } else { path };
-        let version = command_version(candidate.to_string_lossy().as_ref()).unwrap_or_else(|| "configured".into());
+        let version = command_version(candidate.to_string_lossy().as_ref())?;
         return Some((candidate.to_string_lossy().into_owned(), version));
     }
     for binary in ["azurite-blob", "azurite"] {
@@ -709,4 +709,24 @@ fn hide_console(command: &mut Command) {
 
 fn service_label(service: &ServiceName) -> &'static str {
     match service { ServiceName::Blob => "blob", ServiceName::Queue => "queue", ServiceName::Table => "table" }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn missing_configured_executable_is_not_reported_as_available() {
+        let mut config = config::default_config();
+        let missing_path = std::env::temp_dir().join(format!(
+            "aztray-missing-executable-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("clock is after epoch").as_nanos()
+        ));
+        assert!(!missing_path.exists(), "test path unexpectedly exists: {}", missing_path.display());
+        config.executable_path = Some(missing_path.to_string_lossy().into_owned());
+
+        assert_eq!(resolve_azurite_probe(&config), None);
+    }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "az-tray"
-version = "0.1.0"
+version = "0.1.1"
 description = "A fast Windows tray controller for Azurite"
 authors = ["AzTray contributors"]
 edition = "2021"

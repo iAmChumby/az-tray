@@ -1,33 +1,62 @@
 # AzTray
 
-AzTray is a Windows 11 tray controller for a user-local Azurite install. It
-keeps the three Azurite service processes (Blob, Queue, and Table) under the
-same safe ownership rules as `azctl`, with a compact tray popover and a focused
-dashboard for logs, ports, connection strings, and settings.
+AzTray is a Windows 11 tray controller for local [Azurite](https://github.com/Azure/Azurite) development. It manages Azurite Blob, Queue, and Table processes from a compact tray popover or a small dashboard with live logs, port ownership, connection strings, and settings.
 
-The Tauri 2 shell packages the static Next.js export in `out/`. Closing either
-window hides it and leaves the tray controller running. Azurite starts only
-after an explicit action; the tray itself registers for the current user's
-sign-in and never requests elevation.
+The app is app-only: the installer installs AzTray, while Node.js and Azurite remain a separate user-space prerequisite. AzTray never changes an existing `azctl` installation or Azurite data.
 
-## Install
+## Use it tomorrow
 
-PowerShell is the canonical UAC-free installer:
+### 1. Install AzTray
+
+From a standard PowerShell window, run the installer hosted by the public repository:
 
 ```powershell
 irm https://raw.githubusercontent.com/iAmChumby/az-tray/main/scripts/install.ps1 | iex
 ```
 
-Windows Git Bash:
+The script downloads the latest stable x64 release, verifies `SHA256SUMS.txt`, installs under `%LOCALAPPDATA%`, and launches the tray. The NSIS bundle uses current-user install mode, so the AzTray install and sign-in startup registration do not request UAC elevation.
 
-```bash
-bash ./scripts/install.sh
+You can also download `az-tray-x64-setup.exe` directly from the [latest release](https://github.com/iAmChumby/az-tray/releases/latest) and run it. The release page includes the matching `SHA256SUMS.txt` file.
+
+### 2. Install Node.js and Azurite in your user profile
+
+AzTray can open and show its missing-engine state before this step. To run services, install Node.js first. Use the official [Node.js download page](https://nodejs.org/en/download/) and choose the Windows x64 LTS download. If the MSI is restricted by your work machine, use the Windows x64 standalone ZIP, extract it under `%LOCALAPPDATA%`, and use its `node.exe` and `npm.cmd` directly.
+
+With Node.js available in the current PowerShell session, install Azurite into a user-writable directory:
+
+```powershell
+$azuriteRoot = Join-Path $env:LOCALAPPDATA 'AzTrayRuntime\azurite'
+New-Item -ItemType Directory -Force -Path $azuriteRoot | Out-Null
+npm install --global --prefix $azuriteRoot azurite
 ```
 
-The scripts download the x64 current-user NSIS release, verify its SHA-256
-sidecar, install under `%LOCALAPPDATA%`, and launch AzTray. Azurite remains an
-external Node/npm dependency; the dashboard provides an actionable install
-hint when it is missing.
+If Node.js came from a ZIP and is not on `PATH`, prepend its extracted folder before running the command:
+
+```powershell
+$nodeRoot = Join-Path $env:LOCALAPPDATA 'AzTrayRuntime\node'
+$env:Path = "$nodeRoot;$env:Path"
+& (Join-Path $nodeRoot 'npm.cmd') install --global --prefix $azuriteRoot azurite
+```
+
+This follows Azurite's official npm installation path and keeps the package under your profile. The global prefix above places `azurite-blob.cmd`, `azurite-queue.cmd`, and `azurite-table.cmd` in `$azuriteRoot`. Run `Write-Output $azuriteRoot` to print the full path for AzTray's Settings field.
+
+### 3. Point AzTray at that install
+
+Open the dashboard from the tray popover, open **Settings**, and set:
+
+- **Azurite executable override:** the full directory path printed by `Write-Output $azuriteRoot` (or the full path to `azurite-blob.cmd`).
+- **Node executable override:** the full path to `node.exe` when Node is not already on `PATH`.
+
+Click **Save settings**, then **Refresh**. Start all three services from the popover or dashboard. The defaults are `127.0.0.1`, Blob `10000`, Queue `10001`, Table `10002`, and data in `%USERPROFILE%\.azurite`.
+
+If the dashboard reports a port conflict, it identifies the owning process before offering **Free port**. AzTray only stops a process after the confirmation action and only treats its own process tree as managed.
+
+## Runtime prerequisites
+
+- Windows 11 x64 is the first supported target.
+- Node.js is required to run Azurite; AzTray itself is a native Tauri app.
+- The installer skips the WebView2 bootstrapper. Windows 11 normally includes the Evergreen WebView2 Runtime. On a managed, LTSC, or otherwise unusual Windows image, install the [Evergreen WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) separately if Windows reports that the app cannot initialize its WebView.
+- Closing a window returns to the tray. **Quit** asks whether AzTray should stop its app-owned services or leave them running.
 
 ## Build locally
 
@@ -37,21 +66,24 @@ npm run typecheck
 npm run tauri build
 ```
 
-The NSIS bundle uses `currentUser` install mode and skips the WebView2 bootstrap
-installer. The release workflow publishes `az-tray-x64-setup.exe` together
-with `SHA256SUMS.txt`.
+The build exports the Next.js frontend to `out/` and packages it into a current-user NSIS installer. See [`scripts/README.md`](scripts/README.md) for installer parameters and the local fresh-install harness.
 
-## Uninstall
+## Uninstall safely
+
+From a checkout of this repository:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 ```
 
-or from Git Bash:
+From Git Bash:
 
 ```bash
 bash ./scripts/uninstall.sh
 ```
 
-Uninstall removes only the AzTray application and its exact per-user startup
-registration. AzTray settings, azctl configuration, and Azurite data remain.
+The uninstaller removes AzTray binaries and the exact AzTray per-user startup value. It preserves `%APPDATA%\AzTray` settings, the existing `azctl` configuration, and all Azurite data directories. The `%LOCALAPPDATA%\AzTray` install directory is removed by NSIS.
+
+## License
+
+AzTray is MIT-licensed. See [`LICENSE`](LICENSE).

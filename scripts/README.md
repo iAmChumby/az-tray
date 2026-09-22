@@ -1,50 +1,73 @@
 # AzTray install scripts
 
-PowerShell is the canonical installer. It downloads the latest stable x64 NSIS
-release from `iAmChumby/az-tray`, verifies a matching SHA-256 release asset,
-runs the installer silently, and launches AzTray in the tray. The Tauri bundle
-must be configured for `currentUser` installation; these scripts never request
-elevation.
+These scripts install and uninstall the AzTray x64 NSIS package in the current user's `%LOCALAPPDATA%` scope. They do not install Azurite, modify `azctl`, or request elevation. Azurite is a separate Node/npm prerequisite; see the [main README](../README.md#2-install-nodejs-and-azurite-in-your-user-profile).
 
-Run from PowerShell:
+## Install the latest release
+
+PowerShell is the canonical entry point. From any PowerShell window:
+
+```powershell
+irm https://raw.githubusercontent.com/iAmChumby/az-tray/main/scripts/install.ps1 | iex
+```
+
+From a checkout or downloaded source archive:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
-Run from Windows Git Bash:
+The script reads the stable release metadata from `iAmChumby/az-tray`, downloads exactly one x64 installer and its unambiguous SHA-256 asset, verifies the installer, runs the NSIS package silently, and launches the installed tray app. Pin a release when needed:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Version v0.1.1
+```
+
+Use `-SkipLaunch` when the install should finish with the app closed:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -SkipLaunch
+```
+
+## Git Bash
+
+The Bash wrapper delegates all release, checksum, and path-safety work to PowerShell:
 
 ```bash
 bash ./scripts/install.sh
+bash ./scripts/install.sh --Version v0.1.1
 ```
 
-For the fresh-install harness, pass a locally built NSIS installer. An explicit
-`-Sha256` or an adjacent `.sha256`/`.sha256sum` sidecar is verified when
-present; the local path remains usable for unsigned local builds when no
-sidecar exists.
+Run it from a checkout or source archive so the wrapper can locate `install.ps1`. Git Bash needs Windows PowerShell (`powershell.exe`) or PowerShell 7 (`pwsh.exe`).
+
+## Local installer harness
+
+Use a locally built NSIS installer without contacting GitHub. Supply a SHA-256 hash or place a matching `.sha256`/`.sha256sum` sidecar beside the installer:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 `
-  -InstallerPath .\src-tauri\target\release\bundle\nsis\AzTray_0.1.0_x64-setup.exe `
+  -InstallerPath .\src-tauri\target\release\bundle\nsis\AzTray_0.1.1_x64-setup.exe `
   -Sha256 '<64-hex-character-hash>'
 ```
 
-The read-only pre-release smoke check validates scope and any supplied local
-path without downloading, installing, or changing files:
+`-SmokeCheck` validates the requested scope and any supplied local path without downloading, installing, launching, or changing files:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -SmokeCheck
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1 -SmokeCheck
 ```
 
-Uninstall is also user-scoped and silent:
+## Uninstall
+
+PowerShell:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
+```
+
+Git Bash:
+
+```bash
 bash ./scripts/uninstall.sh
 ```
 
-The uninstall script only runs an AzTray NSIS uninstaller found under
-`%LOCALAPPDATA%`, removes the exact AzTray sign-in value when it points into
-that user scope, and preserves `%APPDATA%\AzTray` settings, the existing
-`azctl` installation/configuration, and all Azurite data.
+The uninstaller finds an AzTray NSIS uninstaller under `%LOCALAPPDATA%`, runs it silently, and removes the exact `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\AzTray` value when it points into that user scope. It preserves `%APPDATA%\AzTray`, the existing `azctl` configuration, and all Azurite data directories; NSIS removes the `%LOCALAPPDATA%\AzTray` install directory.

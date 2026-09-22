@@ -53,3 +53,12 @@ checks to build/type-check necessities; no broad test ceremony.
 
 Charts, hotkeys, notifications, advanced settings, data browsing, and scripted
 CLI parity.
+
+## Iteration 1 — work-PC readiness (2026-09-22)
+
+An executable-path override that points to a missing or unusable Azurite
+executable must produce the actionable missing-engine state before Start is
+offered. The public README must explain the separate current-user Node/Azurite
+prerequisite and how to set that path on a fresh Windows 11 work PC. Publish a
+patch release and accept the exact GitHub-downloaded installer through the
+normal install script and installed native UI.

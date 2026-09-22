@@ -148,7 +148,7 @@ try {
         else {
             Write-Info "Smoke check: no AzTray installation is present under '$localRoot'."
         }
-        Write-Info "Preserved user paths: $(Join-Path $env:APPDATA 'AzTray'), $(Join-Path $env:LOCALAPPDATA 'AzTray'), and all Azurite data directories."
+        Write-Info "Preserved user paths: $(Join-Path $env:APPDATA 'AzTray') and all Azurite data directories."
         Write-Info 'Smoke check passed. No uninstaller was executed and no files were changed.'
         exit 0
     }
@@ -161,7 +161,7 @@ try {
 
     Remove-AzTrayStartupValue -LocalRoot $localRoot
     Write-Info 'AzTray binaries were removed by the user-scope uninstaller.'
-    Write-Info "Preserved user paths: $(Join-Path $env:APPDATA 'AzTray'), $(Join-Path $env:LOCALAPPDATA 'AzTray'), and all Azurite data directories."
+    Write-Info "Preserved user paths: $(Join-Path $env:APPDATA 'AzTray') and all Azurite data directories."
 }
 catch {
     Write-Error "[AzTray] $($_.Exception.Message)"
