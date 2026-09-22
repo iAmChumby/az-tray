@@ -41,7 +41,7 @@ export interface AzTrayModel {
   copyConnectionString: (service: ServiceName) => Promise<string>;
   saveLogs: (service?: ServiceName) => Promise<string>;
   clearLogs: (service?: ServiceName) => Promise<void>;
-  quit: (mode: "stop_and_quit" | "leave_running" | "cancel") => Promise<void>;
+  quit: (mode: "stop_and_quit" | "leave_running" | "cancel") => Promise<boolean>;
 }
 
 const serviceTitle = (service: ServiceName) => service[0].toUpperCase() + service.slice(1);
@@ -225,11 +225,15 @@ export function useAzTray(): AzTrayModel {
     } catch (cause) { actionError(cause, "Unable to clear logs"); }
   }, [actionError, apply]);
   const quit = React.useCallback(async (mode: "stop_and_quit" | "leave_running" | "cancel") => {
-    if (mode === "cancel") return;
+    if (mode === "cancel") return false;
     try {
       await aztrayIpc.quitApp(mode);
       setLastEvent(mode === "stop_and_quit" ? "Stopped services and quitting" : "Leaving services running");
-    } catch (cause) { actionError(cause, "Unable to quit AzTray"); }
+      return true;
+    } catch (cause) {
+      actionError(cause, "Unable to quit AzTray");
+      return false;
+    }
   }, [actionError]);
 
   return {

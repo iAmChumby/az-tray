@@ -21,7 +21,7 @@ The script reads the stable release metadata from `iAmChumby/az-tray`, downloads
 Before an upgrade, the script recognizes the expected `%LOCALAPPDATA%\AzTray\az-tray.exe` process by its full path. If it is running, use the AzTray tray menu **Quit AzTray → Stop & quit**, then return to the installer and press Enter. AzTray performs its own ownership-aware Azurite shutdown; the installer waits up to 30 seconds for the process to exit and leaves all processes intact. Type `Q` at the prompt, or let the wait time out, to cancel safely; NSIS starts only after the old process has exited. An unexpected install registration, same-name process at another path, unreadable process identity, or multiple AzTray processes stops the script for manual review.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Version v0.1.3
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Version v0.1.4
 ```
 
 Use `-SkipLaunch` when the install should finish with the app closed:
@@ -36,7 +36,7 @@ The Bash wrapper delegates release selection, checksum verification, repeat-run 
 
 ```bash
 bash ./scripts/install.sh
-bash ./scripts/install.sh --Version v0.1.3
+bash ./scripts/install.sh --Version v0.1.4
 ```
 
 Run it from a checkout or source archive so the wrapper can locate `install.ps1`. Git Bash needs Windows PowerShell (`powershell.exe`) or PowerShell 7 (`pwsh.exe`).
@@ -47,7 +47,7 @@ Use a locally built NSIS installer without contacting GitHub. Supply a SHA-256 h
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 `
-  -InstallerPath .\src-tauri\target\release\bundle\nsis\AzTray_0.1.3_x64-setup.exe `
+  -InstallerPath .\src-tauri\target\release\bundle\nsis\AzTray_0.1.4_x64-setup.exe `
   -Sha256 '<64-hex-character-hash>'
 ```
 

@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { AlertTriangle, Activity, RotateCw } from "lucide-react";
 import { DashboardView, PopoverView } from "@/src/components/AzTrayUI";
+import { Button } from "@/src/components/ui/button";
 import { useAzTray } from "@/src/hooks/useAzTray";
 
 type WindowMode = "popover" | "main";
@@ -17,10 +19,11 @@ async function hideCurrentWindow() {
 
 async function showMainWindow() {
   try {
-    const { Window } = await import("@tauri-apps/api/window");
+    const { Window, getCurrentWindow } = await import("@tauri-apps/api/window");
     const main = await Window.getByLabel("main");
     await main?.show();
     await main?.setFocus();
+    await getCurrentWindow().hide();
   } catch {
     const url = new URL(window.location.href);
     url.searchParams.set("window", "main");
@@ -68,23 +71,24 @@ class ClientErrorBoundary extends React.Component<React.PropsWithChildren, Error
     if (!this.state.error) return this.props.children;
     const error = this.state.error;
     return (
-      <main className="empty-dashboard" role="alert">
+      <main className="az-empty-dashboard az-page-error" role="alert">
         <HeaderMarkFallback />
-        <span className="eyebrow">AZTRAY UI ERROR</span>
+        <AlertTriangle className="az-page-error-icon" aria-hidden="true" />
+        <span className="az-eyebrow">AZTRAY UI ERROR</span>
         <h1>The dashboard hit an error</h1>
         <p>{error.message || "The status response could not be rendered."}</p>
         <details>
           <summary>Show diagnostic</summary>
           <pre>{error.stack ?? String(error)}</pre>
         </details>
-        <button type="button" className="button button-primary" onClick={() => window.location.reload()}>Reload</button>
+        <Button type="button" onClick={() => window.location.reload()}><RotateCw />Reload</Button>
       </main>
     );
   }
 }
 
 function HeaderMarkFallback() {
-  return <span className="app-mark" aria-hidden="true"><i /><i /><i /></span>;
+  return <span className="az-app-mark" aria-hidden="true"><Activity className="az-app-mark-icon" /></span>;
 }
 
 function PageContent() {
