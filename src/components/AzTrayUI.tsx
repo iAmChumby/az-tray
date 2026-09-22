@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Badge, Button, IconButton, Select, TextField, Theme, Tooltip } from "@radix-ui/themes";
 import { aztrayIpc } from "@/src/lib/ipc";
 import type { Config, ServiceName, ServiceSnapshot, ServiceState } from "@/src/lib/types";
 import type { AzTrayModel } from "@/src/hooks/useAzTray";
@@ -103,6 +104,16 @@ export function stateTone(state: ServiceState): string {
   }
 }
 
+function stateColor(state: ServiceState): "green" | "amber" | "red" | "purple" | "gray" {
+  switch (state) {
+    case "running": return "green";
+    case "starting": return "amber";
+    case "broken": return "red";
+    case "portInUse": return "purple";
+    default: return "gray";
+  }
+}
+
 function serviceSymbol(name: ServiceName) {
   return name === "blob" ? "B" : name === "queue" ? "Q" : "T";
 }
@@ -123,10 +134,10 @@ function formatTimestamp(value: string) {
 
 export function StatusPill({ state, compact = false, label }: { state: ServiceState; compact?: boolean; label?: string }) {
   return (
-    <span className={`status-pill status-${state}${compact ? " status-pill-compact" : ""}`}>
+    <Badge color={stateColor(state)} variant={compact ? "soft" : "surface"} radius="full" className={`status-pill status-${state}${compact ? " status-pill-compact" : ""}`}>
       <span className="status-dot" aria-hidden="true">{state === "broken" ? "×" : state === "portInUse" ? "◎" : "●"}</span>
       {label ?? stateLabel(state)}
-    </span>
+    </Badge>
   );
 }
 
@@ -182,10 +193,10 @@ export function ServiceRow({ service, selected, mode = "popover", onSelect, onSt
       </button>
       {mode === "popover" && (
         <div className="service-row-action">
-          {isRunning && <><button type="button" className="button button-quiet button-small" onClick={onStop}>Stop</button><button type="button" className="button button-quiet button-small" onClick={onRestart} aria-label={`Restart ${SERVICE_LABELS[service.name]}`}>↻</button></>}
-          {isStarting && <button type="button" className="button button-quiet button-small" disabled>Starting</button>}
-          {!isRunning && !isStarting && !isOccupied && <button type="button" className="button button-primary button-small" onClick={onStart} disabled={startDisabled}>Start</button>}
-          {isOccupied && <button type="button" className="button button-danger button-small" onClick={onFreePort}>Free port</button>}
+          {isRunning && <><Button type="button" className="button button-quiet button-small" variant="soft" size="1" onClick={onStop}>Stop</Button><IconButton type="button" className="button button-quiet button-small" variant="soft" size="1" onClick={onRestart} aria-label={`Restart ${SERVICE_LABELS[service.name]}`}>↻</IconButton></>}
+          {isStarting && <Button type="button" className="button button-quiet button-small" variant="soft" size="1" disabled>Starting</Button>}
+          {!isRunning && !isStarting && !isOccupied && <Button type="button" className="button button-primary button-small" variant="solid" size="1" onClick={onStart} disabled={startDisabled}>Start</Button>}
+          {isOccupied && <Button type="button" className="button button-danger button-small" color="red" variant="soft" size="1" onClick={onFreePort}>Free port</Button>}
         </div>
       )}
       {mode === "sidebar" && <span className="service-row-chevron" aria-hidden="true">›</span>}
@@ -242,13 +253,18 @@ function OverallStatus({ model }: { model: AzTrayModel }) {
 }
 
 function WindowButton({ children, label, onClick, danger = false }: { children: React.ReactNode; label: string; onClick: () => void; danger?: boolean }) {
-  return <button type="button" aria-label={label} title={label} onClick={onClick} className={`window-button${danger ? " window-button-danger" : ""}`}>{children}</button>;
+  return <IconButton type="button" size="1" variant="ghost" aria-label={label} title={label} onClick={onClick} className={`window-button${danger ? " window-button-danger" : ""}`}>{children}</IconButton>;
 }
 
 function ThemeToggle() {
   const { mode, theme, toggle } = useTheme();
   const nextLabel = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
-  return <button type="button" className="theme-toggle" suppressHydrationWarning onClick={toggle} aria-label={`${nextLabel} (theme: ${mode})`} title={`${nextLabel} · ${mode === "system" ? "following system" : "saved preference"}`}><span aria-hidden="true" suppressHydrationWarning>{theme === "dark" ? "☼" : "☾"}</span></button>;
+  return <IconButton type="button" size="2" variant="ghost" className="theme-toggle" suppressHydrationWarning onClick={toggle} aria-label={`${nextLabel} (theme: ${mode})`} title={`${nextLabel} · ${mode === "system" ? "following system" : "saved preference"}`}><span aria-hidden="true" suppressHydrationWarning>{theme === "dark" ? "☼" : "☾"}</span></IconButton>;
+}
+
+function ThemeFrame({ children }: { children: React.ReactNode }) {
+  const { theme } = useTheme();
+  return <Theme appearance={theme} accentColor="teal" grayColor="slate" panelBackground="solid" radius="large">{children}</Theme>;
 }
 
 export function AppHeader({ model, title, onRefresh, onClose }: { model: AzTrayModel; title: string; onRefresh?: () => void; onClose?: () => void }) {
@@ -276,13 +292,13 @@ export function PopoverView({ model, onOpenDashboard, onHide }: { model: AzTrayM
     if (action) void action();
   };
   return (
-    <main className="popover-window">
+    <ThemeFrame><main className="popover-window">
       <AppHeader model={model} title="AzTray" onRefresh={() => void model.refresh()} onClose={onHide} />
       <div className="popover-scroll">
         <ActionErrorBanner model={model} />
         <section className="popover-hero">
           <div><span className="eyebrow">AZURITE CONTROLLER</span><h1>{model.services ? `${model.runningCount}/3 services online` : "Local emulator"}</h1><p>{model.lastEvent}</p></div>
-          <button type="button" className="button button-primary" onClick={() => void model.startAll()} disabled={!services || model.engine.state !== "ready"}>Start all</button>
+          <Button type="button" className="button button-primary" size="2" onClick={() => void model.startAll()} disabled={!services || model.engine.state !== "ready"}>Start all</Button>
         </section>
         <EngineBanner model={model} />
         <section className="service-stack" aria-label="Azurite services">
@@ -292,14 +308,14 @@ export function PopoverView({ model, onOpenDashboard, onHide }: { model: AzTrayM
           }) : <ServiceSkeleton />}
         </section>
         <section className="popover-actions">
-          <button type="button" className="button button-quiet" onClick={() => setConfirm({ title: "Stop all services?", body: "AzTray will stop every app-owned Azurite process. External processes remain untouched.", label: "Stop all", action: model.stopAll })} disabled={!services}>Stop all</button>
-          <button type="button" className="button button-quiet" onClick={() => setConfirm({ title: "Restart all services?", body: "All app-owned services will be restarted together.", label: "Restart all", action: model.restartAll })} disabled={!services || model.engine.state !== "ready"}>Restart all</button>
-          <button type="button" className="button button-quiet" onClick={onOpenDashboard}>Open dashboard <span aria-hidden="true">↗</span></button>
+          <Button type="button" className="button button-quiet" variant="soft" onClick={() => setConfirm({ title: "Stop all services?", body: "AzTray will stop every app-owned Azurite process. External processes remain untouched.", label: "Stop all", action: model.stopAll })} disabled={!services}>Stop all</Button>
+          <Button type="button" className="button button-quiet" variant="soft" onClick={() => setConfirm({ title: "Restart all services?", body: "All app-owned services will be restarted together.", label: "Restart all", action: model.restartAll })} disabled={!services || model.engine.state !== "ready"}>Restart all</Button>
+          <Button type="button" className="button button-quiet" variant="soft" onClick={onOpenDashboard}>Open dashboard <span aria-hidden="true">↗</span></Button>
         </section>
       </div>
       <footer className="app-footer"><span className="footer-event">{model.lastEvent}</span><span className="footer-address">{model.snapshot?.config.host ?? "127.0.0.1"}</span></footer>
       {confirm && <ConfirmDialog title={confirm.title} body={confirm.body} confirmLabel={confirm.label} onConfirm={runConfirm} onCancel={() => setConfirm(null)} />}
-    </main>
+    </main></ThemeFrame>
   );
 }
 
@@ -334,7 +350,7 @@ export function DashboardView({ model, onHide }: { model: AzTrayModel; onHide: (
     };
   }, []);
   return (
-    <main className="dashboard-window">
+    <ThemeFrame><main className="dashboard-window">
       <AppHeader model={model} title="AzTray" onRefresh={() => void model.refresh()} onClose={onHide} />
       <ActionErrorBanner model={model} />
       <div className="dashboard-body">
@@ -359,7 +375,7 @@ export function DashboardView({ model, onHide }: { model: AzTrayModel; onHide: (
       <footer className="app-footer"><span className="footer-event">{model.lastEvent}</span><span className="footer-address">{model.snapshot?.generatedAt ? `updated ${formatTimestamp(model.snapshot.generatedAt)}` : "connecting"}</span><button type="button" className="footer-quit" onClick={() => setQuitOpen(true)}>Quit AzTray</button></footer>
       {confirm && <ConfirmDialog title={confirm.title} body={confirm.body} confirmLabel={confirm.label} onConfirm={runConfirm} onCancel={() => setConfirm(null)} />}
       {quitOpen && <QuitDialog model={model} onCancel={() => setQuitOpen(false)} onDone={onHide} />}
-    </main>
+    </main></ThemeFrame>
   );
 }
 
@@ -401,7 +417,7 @@ function ServiceDetail({ model, service, ask }: { model: AzTrayModel; service: S
       </div>
       <section className="connection-card"><div><span className="eyebrow">CONNECTION STRING</span><p>Copy a ready-to-use endpoint for this service.</p></div><button type="button" className="button button-quiet" onClick={() => void copyConnection()}>{copied ? "Copied" : "Copy string"}</button></section>
       <section className="logs-card">
-        <div className="logs-heading"><div><span className="eyebrow">LIVE LOGS</span><span className="logs-count">{logs.length} lines · {logScope === "merged" ? "all services" : SERVICE_LABELS[service.name]}</span></div><div className="logs-actions"><div className="log-scope" role="group" aria-label="Log scope"><button type="button" className={logScope === "service" ? "is-active" : ""} onClick={() => setLogScope("service")}>Service</button><button type="button" className={logScope === "merged" ? "is-active" : ""} onClick={() => setLogScope("merged")}>Merged</button></div><input aria-label="Filter logs" placeholder="Filter logs" value={logFilter} onChange={(event) => setLogFilter(event.target.value)} /><select aria-label="Log stream" value={stream} onChange={(event) => setStream(event.target.value as typeof stream)}><option value="all">All streams</option><option value="stdout">stdout</option><option value="stderr">stderr</option><option value="system">system</option></select><button type="button" className="icon-action" title="Copy visible logs" aria-label="Copy visible logs" onClick={() => void copyLogs()}>⧉</button><button type="button" className="icon-action" title="Save logs" aria-label="Save logs" onClick={() => void model.saveLogs(logScope === "service" ? service.name : undefined)}>⇩</button></div></div>
+        <div className="logs-heading"><div><span className="eyebrow">LIVE LOGS</span><span className="logs-count">{logs.length} lines · {logScope === "merged" ? "all services" : SERVICE_LABELS[service.name]}</span></div><div className="logs-actions"><div className="log-scope" role="group" aria-label="Log scope"><button type="button" className={logScope === "service" ? "is-active" : ""} onClick={() => setLogScope("service")}>Service</button><button type="button" className={logScope === "merged" ? "is-active" : ""} onClick={() => setLogScope("merged")}>Merged</button></div><TextField.Root size="1" aria-label="Filter logs" placeholder="Filter logs" value={logFilter} onChange={(event) => setLogFilter(event.target.value)} /><Select.Root size="1" value={stream} onValueChange={(value) => setStream(value as typeof stream)}><Select.Trigger aria-label="Log stream" placeholder="All streams" /><Select.Content><Select.Item value="all">All streams</Select.Item><Select.Item value="stdout">stdout</Select.Item><Select.Item value="stderr">stderr</Select.Item><Select.Item value="system">system</Select.Item></Select.Content></Select.Root><Tooltip content="Copy visible logs"><IconButton type="button" className="icon-action" variant="ghost" size="1" title="Copy visible logs" aria-label="Copy visible logs" onClick={() => void copyLogs()}>⧉</IconButton></Tooltip><Button type="button" className="button button-primary export-logs-button" size="1" onClick={() => void model.saveLogs(logScope === "service" ? service.name : undefined)}>Export logs</Button></div></div>
         <div className="log-viewport" aria-live="polite">{logs.length ? logs.map((entry) => <div className={`log-line log-${entry.level}`} key={entry.id}><time>{formatTimestamp(entry.timestamp)}</time><span className="log-stream">{logScope === "merged" ? entry.service : entry.stream}</span><span>{entry.message}</span></div>) : <div className="empty-logs"><span>—</span><p>{service.state === "stopped" ? "Start the service to stream Azurite output." : "No matching log lines yet."}</p></div>}</div>
       </section>
     </div>

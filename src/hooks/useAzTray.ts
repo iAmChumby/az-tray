@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { aztrayIpc } from "@/src/lib/ipc";
+import { actionErrorMessage } from "@/src/lib/actionError";
 import type { AppSnapshot, Config, EngineSnapshot, ServiceName, ServiceSnapshot, ServiceState } from "@/src/lib/types";
 import type { FreePortResult } from "@/src/lib/types";
 
@@ -101,7 +102,7 @@ export function useAzTray(): AzTrayModel {
     }).catch((cause: unknown) => {
       if (!alive) return;
       setLoading(false);
-      setError(cause instanceof Error ? cause.message : "Unable to reach AzTray controller");
+      setError(actionErrorMessage(cause, "Unable to reach AzTray controller"));
       setLastEvent("Controller unavailable");
     });
     return () => {
@@ -112,7 +113,7 @@ export function useAzTray(): AzTrayModel {
 
   const apply = React.useCallback((next: AppSnapshot) => acceptSnapshot(next), [acceptSnapshot]);
   const actionError = React.useCallback((cause: unknown, fallback: string) => {
-    const message = cause instanceof Error ? cause.message : fallback;
+    const message = actionErrorMessage(cause, fallback);
     setError(message);
     setLastEvent(message);
   }, []);
@@ -195,7 +196,21 @@ export function useAzTray(): AzTrayModel {
   }, [actionError]);
   const saveLogs = React.useCallback(async (service?: ServiceName) => {
     try {
-      const result = await aztrayIpc.saveLogs(service ? { serviceName: service } : {});
+      let path: string | undefined;
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const chosen = await save({
+          title: "Export AzTray logs",
+          defaultPath: service ? `aztray-${service}-logs.txt` : "aztray-logs.txt",
+          filters: [{ name: "Text log", extensions: ["txt"] }],
+        });
+        if (!chosen) {
+          setLastEvent("Log export canceled");
+          return "";
+        }
+        path = chosen;
+      }
+      const result = await aztrayIpc.saveLogs({ ...(service ? { serviceName: service } : {}), ...(path ? { path } : {}) });
       setLastEvent(`Logs saved to ${result.path}`);
       return result.path;
     } catch (cause) {

@@ -143,6 +143,7 @@ pub fn run() -> tauri::Result<()> {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             tray::build(&app.handle())?;
 

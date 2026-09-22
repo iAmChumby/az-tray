@@ -17,12 +17,22 @@ pub struct LogStore {
 
 impl LogStore {
     pub fn push(&mut self, service: ServiceName, stream: LogStream, message: String) -> LogEntry {
-        self.next_sequence = self.next_sequence.saturating_add(1);
         let level = match stream {
             LogStream::Stdout => LogLevel::Info,
             LogStream::Stderr => LogLevel::Warn,
             LogStream::System => LogLevel::Info,
         };
+        self.push_with_level(service, stream, level, message)
+    }
+
+    pub fn push_with_level(
+        &mut self,
+        service: ServiceName,
+        stream: LogStream,
+        level: LogLevel,
+        message: String,
+    ) -> LogEntry {
+        self.next_sequence = self.next_sequence.saturating_add(1);
         let timestamp = now_timestamp();
         let entry = LogEntry {
             id: format!("{}-{}", timestamp.replace([':', '.', '-'], ""), self.next_sequence),
@@ -167,4 +177,48 @@ fn stream_label(stream: &LogStream) -> &'static str {
 #[allow(dead_code)]
 fn _path_is_absolute(path: &Path) -> bool {
     path.is_absolute()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_with_level_preserves_error_level_for_exported_diagnostics() {
+        let mut store = LogStore::default();
+        let entry = store.push_with_level(
+            ServiceName::Blob,
+            LogStream::System,
+            LogLevel::Error,
+            "could not start azurite-blob: access denied".into(),
+        );
+
+        assert!(matches!(entry.level, LogLevel::Error));
+        let logs = store.query(&LogsQuery { service_name: None, limit: None });
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].message, "could not start azurite-blob: access denied");
+    }
+
+    #[test]
+    fn save_exports_prelaunch_diagnostic_message() {
+        let mut store = LogStore::default();
+        store.push_with_level(
+            ServiceName::Queue,
+            LogStream::System,
+            LogLevel::Error,
+            "start failed before process launch: executable missing".into(),
+        );
+
+        let path = std::env::temp_dir().join(format!(
+            "aztray-log-test-{}-{}.txt",
+            std::process::id(),
+            store.query(&LogsQuery { service_name: None, limit: None })[0].sequence
+        ));
+        let result = store.save(None, Some(path.to_string_lossy().as_ref())).expect("logs save");
+        let contents = std::fs::read_to_string(&path).expect("saved logs");
+
+        assert_eq!(result.line_count, 1);
+        assert!(contents.contains("start failed before process launch: executable missing"));
+        let _ = std::fs::remove_file(path);
+    }
 }

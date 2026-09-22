@@ -53,6 +53,10 @@ Click **Save settings**, then **Refresh**. Start all three services from the pop
 
 If the dashboard reports a port conflict, it identifies the owning process before offering **Free port**. AzTray only stops a process after the confirmation action and only treats its own process tree as managed.
 
+### Logs and failed starts
+
+Service output and startup diagnostics appear in the dashboard's **Live logs** panel while AzTray is running. Logs stay in memory until you click **Export logs** and choose a `.txt` destination in the native save dialog. Export the merged view to share all three services' output, or select a service to export only its logs. The app does not create a log file automatically; export before quitting if you need to keep the session's diagnostics.
+
 ## Runtime prerequisites
 
 - Windows 11 x64 is the first supported target.

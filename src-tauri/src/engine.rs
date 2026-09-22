@@ -137,12 +137,20 @@ impl AppEngine {
     pub fn start_service(&self, service: ServiceName) -> Result<AppSnapshot, String> {
         let engine = self.check_engine();
         if engine.state != EngineState::Ready {
-            return Err(engine.message.unwrap_or_else(|| "Azurite is not ready".into()));
+            let error = engine.message.unwrap_or_else(|| "Azurite is not ready".into());
+            self.record_start_error(&service, error.clone());
+            return Err(error);
         }
-        let (config, port, existing_process) = {
-            let inner = self.inner.lock().map_err(|_| "engine lock poisoned".to_string())?;
-            let port = *inner.config.ports.get(&service).ok_or_else(|| "service port is missing".to_string())?;
-            (inner.config.clone(), port, inner.processes.contains_key(&service))
+        let config_result = self.inner.lock().map_err(|_| "engine lock poisoned".to_string()).and_then(|inner| {
+            let port = inner.config.ports.get(&service).copied().ok_or_else(|| "service port is missing".to_string())?;
+            Ok((inner.config.clone(), port, inner.processes.contains_key(&service)))
+        });
+        let (config, port, existing_process) = match config_result {
+            Ok(value) => value,
+            Err(error) => {
+                self.record_start_error(&service, error.clone());
+                return Err(error);
+            }
         };
         if existing_process {
             let snapshot = self.snapshot();
@@ -153,16 +161,28 @@ impl AppEngine {
         let owned_pids = HashSet::new();
         let probe = ports::probe(&config.host, port, &owned_pids);
         if let Some(owner) = probe.owner {
-            self.set_port_in_use(&service, owner.clone(), "service port is already in use".into());
-            return Err(format!("{} port {} is used by PID {}", service_label(&service), port, owner.process.pid));
+            let error = format!("{} port {} is used by PID {}", service_label(&service), port, owner.process.pid);
+            self.set_port_in_use(&service, owner, error.clone());
+            self.append_system_error(&service, error.clone());
+            return Err(error);
         }
         if let Some(error) = probe.error {
             self.set_service_error(&service, ServiceState::Broken, error.clone());
+            self.append_system_error(&service, error.clone());
             return Err(error);
         }
-        std::fs::create_dir_all(&config.data_directory)
-            .map_err(|error| format!("could not create Azurite data directory: {error}"))?;
-        let spec = resolve_launch_spec(&config, &service)?;
+        if let Err(error) = std::fs::create_dir_all(&config.data_directory) {
+            let error = format!("could not create Azurite data directory: {error}");
+            self.record_start_error(&service, error.clone());
+            return Err(error);
+        }
+        let spec = match resolve_launch_spec(&config, &service) {
+            Ok(spec) => spec,
+            Err(error) => {
+                self.record_start_error(&service, error.clone());
+                return Err(error);
+            }
+        };
         let mut command = Command::new(&spec.program);
         command
             .args(&spec.args)
@@ -170,9 +190,14 @@ impl AppEngine {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hide_console(&mut command);
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("could not start {}: {error}", spec.display))?;
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                let error = format!("could not start {}: {error}", spec.display);
+                self.record_start_error(&service, error.clone());
+                return Err(error);
+            }
+        };
         let root_pid = child.id();
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
@@ -354,8 +379,9 @@ impl AppEngine {
                 if let Some(managed) = managed {
                     let _ = ports::terminate(managed.root_pid, true);
                 }
-                self.set_service_error(&service, ServiceState::Broken, "Azurite did not begin listening within 10 seconds".into());
-                self.append_system_log(&service, "Startup timed out after 10 seconds".into());
+                let error = "Azurite did not begin listening within 10 seconds".to_string();
+                self.set_service_error(&service, ServiceState::Broken, error.clone());
+                self.append_system_error(&service, format!("Startup timed out after 10 seconds: {error}"));
                 return;
             }
             let (config, port, managed, root_pid) = match self.inner.lock() {
@@ -368,20 +394,33 @@ impl AppEngine {
             if let Ok(mut child) = managed.lock() {
                 if let Ok(Some(status)) = child.try_wait() {
                     self.inner.lock().ok().map(|mut inner| inner.processes.remove(&service));
-                    self.set_service_error(&service, ServiceState::Broken, format!("Azurite exited during startup ({status})"));
+                    let error = format!("Azurite exited during startup ({status})");
+                    self.set_service_error(&service, ServiceState::Broken, error.clone());
+                    self.append_system_error(&service, error);
                     return;
                 }
             }
             let owned = self.inner.lock().ok().and_then(|inner| inner.services.get(&service).map(|record| record.owned_pids.clone())).unwrap_or_default();
-            if let Some(owner) = ports::probe(&config.host, port, &owned).owner {
+            let probe = ports::probe(&config.host, port, &owned);
+            if let Some(error) = probe.error {
+                let error = format!("startup probe failed on {}:{}: {error}", config.host, port);
+                let managed = self.inner.lock().ok().and_then(|mut inner| inner.processes.remove(&service));
+                if let Some(managed) = managed {
+                    let _ = ports::terminate(managed.root_pid, true);
+                }
+                self.record_start_error(&service, error);
+                return;
+            }
+            if let Some(owner) = probe.owner {
                 if owner.process.pid != 0 {
                     if !ports::is_descendant_or_self(owner.process.pid, root_pid) {
                         let managed = self.inner.lock().ok().and_then(|mut inner| inner.processes.remove(&service));
                         if let Some(managed) = managed {
                             let _ = ports::terminate(managed.root_pid, true);
                         }
-                        self.set_port_in_use(&service, owner, "another process claimed the service port during startup".into());
-                        self.append_system_log(&service, "Startup stopped because an external process owns the port".into());
+                        let error = "another process claimed the service port during startup".to_string();
+                        self.set_port_in_use(&service, owner, error.clone());
+                        self.append_system_error(&service, format!("Startup stopped because an external process owns the port: {error}"));
                         return;
                     }
                     if let Ok(mut inner) = self.inner.lock() {
@@ -423,8 +462,17 @@ impl AppEngine {
     }
 
     fn append_log(&self, service: ServiceName, stream: LogStream, message: String) {
+        let level = match stream {
+            LogStream::Stdout => LogLevel::Info,
+            LogStream::Stderr => LogLevel::Warn,
+            LogStream::System => LogLevel::Info,
+        };
+        self.append_log_with_level(service, stream, level, message);
+    }
+
+    fn append_log_with_level(&self, service: ServiceName, stream: LogStream, level: LogLevel, message: String) {
         let entry = match self.inner.lock() {
-            Ok(mut inner) => inner.logs.push(service, stream, message),
+            Ok(mut inner) => inner.logs.push_with_level(service, stream, level, message),
             Err(_) => return,
         };
         self.emit(EngineEvent::LogEntry(entry));
@@ -432,6 +480,15 @@ impl AppEngine {
 
     fn append_system_log(&self, service: &ServiceName, message: String) {
         self.append_log(service.clone(), LogStream::System, message);
+    }
+
+    fn append_system_error(&self, service: &ServiceName, message: String) {
+        self.append_log_with_level(service.clone(), LogStream::System, LogLevel::Error, message);
+    }
+
+    fn record_start_error(&self, service: &ServiceName, error: String) {
+        self.set_service_error(service, ServiceState::Broken, error.clone());
+        self.append_system_error(service, error);
     }
 
     fn set_port_in_use(&self, service: &ServiceName, owner: PortOwner, error: String) {
@@ -479,7 +536,11 @@ impl AppEngine {
                     if let Ok(Some(status)) = child.try_wait() {
                         let code = status.code();
                         self.inner.lock().ok().map(|mut inner| inner.processes.remove(&service));
-                        self.mark_stopped(&service, code, (code != Some(0)).then(|| format!("Azurite exited with code {:?}", code)));
+                        let error = (code != Some(0)).then(|| format!("Azurite exited with code {:?}", code));
+                        self.mark_stopped(&service, code, error.clone());
+                        if let Some(error) = error {
+                            self.append_system_error(&service, error);
+                        }
                         continue;
                     }
                 }
