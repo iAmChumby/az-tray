@@ -684,13 +684,13 @@ fn resolve_launch_spec(config: &Config, service: &ServiceName) -> Result<LaunchS
         return Ok(LaunchSpec { program: candidate.to_string_lossy().into_owned(), args, display: candidate.to_string_lossy().into_owned() });
     }
     let binary = format!("azurite-{label}");
-    if command_available(&binary) {
-        return Ok(LaunchSpec { program: binary.clone(), args, display: binary });
+    if let Some(program) = resolve_command_path(&binary) {
+        return Ok(LaunchSpec { program, args, display: binary });
     }
-    if command_available("npx") {
+    if let Some(program) = resolve_command_path("npx") {
         let mut npx_args = vec!["--no-install".into(), binary.clone()];
         npx_args.append(&mut args);
-        return Ok(LaunchSpec { program: "npx".into(), args: npx_args, display: format!("npx --no-install {binary}") });
+        return Ok(LaunchSpec { program, args: npx_args, display: format!("npx --no-install {binary}") });
     }
     Err("Azurite service executable is missing; install Azurite or configure its path".into())
 }
@@ -703,19 +703,21 @@ fn resolve_azurite_probe(config: &Config) -> Option<(String, String)> {
         return Some((candidate.to_string_lossy().into_owned(), version));
     }
     for binary in ["azurite-blob", "azurite"] {
-        if command_available(binary) {
-            let version = command_version(binary).unwrap_or_else(|| "installed".into());
-            return Some((binary.into(), version));
+        if let Some(program) = resolve_command_path(binary) {
+            let version = command_version(&program)?;
+            return Some((program, version));
         }
     }
-    if command_available("npx") {
-        let mut command = Command::new("npx");
+    if let Some(program) = resolve_command_path("npx") {
+        let mut command = Command::new(&program);
         command.args(["--no-install", "azurite-blob", "--version"]);
         hide_console(&mut command);
         if let Ok(output) = command.output() {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                return Some(("npx --no-install azurite-blob".into(), if version.is_empty() { "installed".into() } else { version }));
+                if !version.is_empty() {
+                    return Some(("npx --no-install azurite-blob".into(), version));
+                }
             }
         }
     }
@@ -728,7 +730,8 @@ fn find_in_directory(directory: &Path, label: &str) -> Option<PathBuf> {
 }
 
 fn command_version(program: &str) -> Option<String> {
-    let mut command = Command::new(program);
+    let program = resolve_command_path(program)?;
+    let mut command = Command::new(&program);
     command.arg("--version");
     hide_console(&mut command);
     let output = command.output().ok()?;
@@ -737,11 +740,38 @@ fn command_version(program: &str) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-fn command_available(program: &str) -> bool {
-    if Path::new(program).is_file() { return true; }
-    let mut command = if cfg!(windows) { let mut command = Command::new("where"); command.arg(program); command } else { let mut command = Command::new("sh"); command.args(["-c", "command -v \"$1\" >/dev/null 2>&1", "aztray", program]); command };
-    hide_console(&mut command);
-    command.output().map(|output| output.status.success()).unwrap_or(false)
+fn resolve_command_path(program: &str) -> Option<String> {
+    if Path::new(program).is_file() {
+        return Some(program.to_string());
+    }
+
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("where");
+        command.arg(program);
+        hide_console(&mut command);
+        let output = command.output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        return select_command_path(&String::from_utf8_lossy(&output.stdout));
+    }
+
+    #[cfg(not(windows))]
+    {
+        let mut command = Command::new("sh");
+        command.args(["-c", "command -v \"$1\" >/dev/null 2>&1", "aztray", program]);
+        hide_console(&mut command);
+        command.output().ok()?.status.success().then_some(program.to_string())
+    }
+}
+
+#[cfg(windows)]
+fn select_command_path(output: &str) -> Option<String> {
+    let lines: Vec<String> = output.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_string).collect();
+    lines.iter().find(|line| {
+        Path::new(line).extension().and_then(|extension| extension.to_str()).map(|extension| extension.eq_ignore_ascii_case("exe") || extension.eq_ignore_ascii_case("cmd")).unwrap_or(false)
+    }).cloned().or_else(|| lines.into_iter().next())
 }
 
 fn wait_for_exit(child: &Arc<Mutex<Child>>, timeout: Duration) {
@@ -775,6 +805,7 @@ fn service_label(service: &ServiceName) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -789,5 +820,27 @@ mod tests {
         config.executable_path = Some(missing_path.to_string_lossy().into_owned());
 
         assert_eq!(resolve_azurite_probe(&config), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn where_output_prefers_windows_shim_over_extensionless_match() {
+        let output = "C:\\nvm4w\\nodejs\\npx\r\nC:\\nvm4w\\nodejs\\npx.cmd\r\n";
+        assert_eq!(select_command_path(output), Some("C:\\nvm4w\\nodejs\\npx.cmd".into()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn full_path_cmd_shim_can_be_version_probed() {
+        let path = std::env::temp_dir().join(format!(
+            "aztray-version-probe-{}-{}.cmd",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("clock is after epoch").as_nanos()
+        ));
+        fs::write(&path, "@echo off\r\necho 9.9.9\r\n").expect("write cmd shim");
+
+        assert_eq!(command_version(path.to_string_lossy().as_ref()), Some("9.9.9".into()));
+
+        let _ = fs::remove_file(path);
     }
 }
