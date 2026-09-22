@@ -1,0 +1,18 @@
+node_modules/
+.next/
+out/
+dist/
+target/
+.env*
+!.env.example
+*.log
+*.tsbuildinfo
+
+# Tauri generated files
+src-tauri/gen/
+
+# Local IDE/OS state
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

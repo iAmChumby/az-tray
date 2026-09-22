@@ -1,0 +1,54 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build NSIS installer
+        run: npm run tauri build
+
+      - name: Normalize release assets
+        shell: pwsh
+        run: |
+          $assetDir = Join-Path $env:GITHUB_WORKSPACE "release-assets"
+          New-Item -ItemType Directory -Force -Path $assetDir | Out-Null
+          $installer = Get-ChildItem -LiteralPath "$env:GITHUB_WORKSPACE\src-tauri\target\release\bundle\nsis" -Filter "*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Tauri did not produce an NSIS setup executable" }
+          Copy-Item -LiteralPath $installer.FullName -Destination (Join-Path $assetDir "az-tray-x64-setup.exe") -Force
+          $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $assetDir "az-tray-x64-setup.exe")).Hash.ToLowerInvariant()
+          "$hash  az-tray-x64-setup.exe" | Set-Content -LiteralPath (Join-Path $assetDir "SHA256SUMS.txt") -Encoding ascii
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/az-tray-x64-setup.exe
+            release-assets/SHA256SUMS.txt
+          generate_release_notes: true
