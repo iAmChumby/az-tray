@@ -22,5 +22,14 @@
   listener was identified by name/PID in the Free port confirmation and
   released. Stop & quit exited the tray and cleared all three default ports.
 - Final source adds the missing-engine banner to dashboard Services as well as
-  Settings and the popover. Rebuild and GitHub-downloaded release acceptance
-  remain the final publication gates.
+  Settings and the popover. The v0.1.1 Windows release workflow passed and
+  published the installer plus SHA-256 checksum.
+- Ran the README's public install command from an `AdminToken=False` shell.
+  It downloaded the published v0.1.1 installer, verified its SHA-256, installed
+  in `%LOCALAPPDATA%` without a UAC prompt, launched AzTray, and registered
+  current-user sign-in startup.
+- Used that GitHub-downloaded installed app in native Windows UI. Start all
+  reached 3/3 Running; the dashboard showed live Blob and merged service logs;
+  restarting Blob changed its PID while Queue and Table remained running.
+  Stop & quit exited the process and cleared ports 10000–10002. Relaunching
+  left the tray app running idle with sign-in startup intact.
