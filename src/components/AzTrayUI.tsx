@@ -5,6 +5,87 @@ import { aztrayIpc } from "@/src/lib/ipc";
 import type { Config, ServiceName, ServiceSnapshot, ServiceState } from "@/src/lib/types";
 import type { AzTrayModel } from "@/src/hooks/useAzTray";
 
+const THEME_STORAGE_KEY = "aztray-theme";
+const THEME_CHANNEL_NAME = "aztray-theme";
+type ThemeMode = "light" | "dark" | "system";
+type EffectiveTheme = "light" | "dark";
+
+function isThemeMode(value: string | null | undefined): value is ThemeMode {
+  return value === "light" || value === "dark" || value === "system";
+}
+
+function systemTheme(): EffectiveTheme {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function initialThemeMode(): ThemeMode {
+  if (typeof document === "undefined") return "system";
+  const mode = document.documentElement.dataset.themeMode;
+  return isThemeMode(mode) ? mode : "system";
+}
+
+function initialEffectiveTheme(): EffectiveTheme {
+  if (typeof document !== "undefined") {
+    const theme = document.documentElement.dataset.theme;
+    if (theme === "light" || theme === "dark") return theme;
+  }
+  return systemTheme();
+}
+
+export function useTheme() {
+  const [mode, setModeState] = React.useState<ThemeMode>(initialThemeMode);
+  const [theme, setThemeState] = React.useState<EffectiveTheme>(initialEffectiveTheme);
+  const channelRef = React.useRef<BroadcastChannel | null>(null);
+
+  const applyTheme = React.useCallback((next: ThemeMode) => {
+    const effective = next === "system" ? systemTheme() : next;
+    document.documentElement.dataset.themeMode = next;
+    document.documentElement.dataset.theme = effective;
+    document.documentElement.style.colorScheme = effective;
+    setThemeState(effective);
+  }, []);
+
+  React.useEffect(() => {
+    applyTheme(mode);
+    const receive = (next: ThemeMode) => {
+      setModeState(next);
+      applyTheme(next);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY && isThemeMode(event.newValue)) receive(event.newValue);
+    };
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onSystemChange = () => { if (mode === "system") applyTheme("system"); };
+    window.addEventListener("storage", onStorage);
+    media.addEventListener?.("change", onSystemChange);
+    if ("BroadcastChannel" in window) {
+      const channel = new BroadcastChannel(THEME_CHANNEL_NAME);
+      channelRef.current = channel;
+      channel.onmessage = (event: MessageEvent<unknown>) => {
+        const next = typeof event.data === "string" ? event.data : (event.data as { mode?: unknown } | null)?.mode;
+        if (typeof next === "string" && isThemeMode(next)) receive(next);
+      };
+    }
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      media.removeEventListener?.("change", onSystemChange);
+      channelRef.current?.close();
+      channelRef.current = null;
+    };
+  }, [applyTheme, mode]);
+
+  const setMode = React.useCallback((next: ThemeMode) => {
+    setModeState(next);
+    applyTheme(next);
+    try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* storage can be disabled in browser previews */ }
+    try { document.cookie = `${THEME_STORAGE_KEY}=${next}; max-age=31536000; path=/; SameSite=Lax`; } catch { /* cookie access can be disabled in browser previews */ }
+    channelRef.current?.postMessage(next);
+  }, [applyTheme]);
+
+  const toggle = React.useCallback(() => setMode(theme === "dark" ? "light" : "dark"), [setMode, theme]);
+  return { mode, theme, setMode, toggle };
+}
+
 export const SERVICE_ORDER: ServiceName[] = ["blob", "queue", "table"];
 export const SERVICE_LABELS: Record<ServiceName, string> = { blob: "Blob", queue: "Queue", table: "Table" };
 
@@ -164,12 +245,19 @@ function WindowButton({ children, label, onClick, danger = false }: { children: 
   return <button type="button" aria-label={label} title={label} onClick={onClick} className={`window-button${danger ? " window-button-danger" : ""}`}>{children}</button>;
 }
 
+function ThemeToggle() {
+  const { mode, theme, toggle } = useTheme();
+  const nextLabel = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+  return <button type="button" className="theme-toggle" suppressHydrationWarning onClick={toggle} aria-label={`${nextLabel} (theme: ${mode})`} title={`${nextLabel} · ${mode === "system" ? "following system" : "saved preference"}`}><span aria-hidden="true" suppressHydrationWarning>{theme === "dark" ? "☼" : "☾"}</span></button>;
+}
+
 export function AppHeader({ model, title, onRefresh, onClose }: { model: AzTrayModel; title: string; onRefresh?: () => void; onClose?: () => void }) {
   return (
     <header className="app-header" data-tauri-drag-region>
       <div className="app-header-brand"><HeaderMark /><span>{title}</span></div>
       <div className="app-header-status"><OverallStatus model={model} /></div>
       <div className="app-header-actions" data-tauri-drag-region="false">
+        <ThemeToggle />
         {onRefresh && <WindowButton label="Refresh status" onClick={onRefresh}>↻</WindowButton>}
         {onClose && <WindowButton label="Close window to tray" onClick={onClose}>×</WindowButton>}
       </div>

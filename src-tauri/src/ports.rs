@@ -232,5 +232,8 @@ fn hide_console(command: &mut Command) {
 
 #[cfg(windows)]
 fn which(executable: &str) -> bool {
-    Command::new("where").arg(executable).output().map(|output| output.status.success()).unwrap_or(false)
+    let mut command = Command::new("where");
+    command.arg(executable);
+    hide_console(&mut command);
+    command.output().map(|output| output.status.success()).unwrap_or(false)
 }

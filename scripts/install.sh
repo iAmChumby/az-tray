@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Git Bash entry point. PowerShell owns the release/download and path-safety logic.
+# Git Bash entry point. PowerShell owns release selection, SHA-256 verification,
+# repeat-run upgrade handling, and install-path/process safety.
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 if command -v pwsh.exe >/dev/null 2>&1; then
@@ -15,20 +16,18 @@ else
   exit 127
 fi
 
-if command -v cygpath >/dev/null 2>&1; then
-  ps_script="$(cygpath -w -- "$script_dir/install.ps1")"
-else
-  ps_script="$script_dir/install.ps1"
-fi
-
 convert_path() {
   local value="$1"
   if command -v cygpath >/dev/null 2>&1 && [[ "$value" == /* ]]; then
     cygpath -w -- "$value"
+  elif command -v wslpath >/dev/null 2>&1 && [[ "$value" == /* ]]; then
+    wslpath -w -- "$value"
   else
     printf '%s' "$value"
   fi
 }
+
+ps_script="$(convert_path "$script_dir/install.ps1")"
 
 converted_args=()
 while (($# > 0)); do

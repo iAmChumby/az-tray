@@ -18,6 +18,8 @@ $ErrorActionPreference = 'Stop'
 $script:Repository = 'iAmChumby/az-tray'
 $script:AppName = 'AzTray'
 $script:ReleaseApi = "https://api.github.com/repos/$($script:Repository)/releases"
+$script:ExpectedInstallDirectoryName = 'AzTray'
+$script:ExpectedExecutableName = 'az-tray.exe'
 
 function Write-Info {
     param([Parameter(Mandatory = $true)][string]$Message)
@@ -181,61 +183,195 @@ function Assert-InstallerHash {
     Write-Info "SHA-256 verified: $actualHash"
 }
 
-function Get-AzTrayExecutable {
+function Get-ExpectedAzTrayExecutablePath {
     param([Parameter(Mandatory = $true)][string]$LocalRoot)
 
-    $candidateDirectories = New-Object System.Collections.Generic.List[string]
-    foreach ($directory in @(
-            (Join-Path $LocalRoot 'Programs\AzTray'),
-            (Join-Path $LocalRoot 'Programs\az-tray'),
-            (Join-Path $LocalRoot 'AzTray'),
-            (Join-Path $LocalRoot 'az-tray')
-        )) {
-        if (-not $candidateDirectories.Contains($directory)) {
-            $candidateDirectories.Add($directory)
+    $installDirectory = Join-Path $LocalRoot $script:ExpectedInstallDirectoryName
+    if (-not (Test-PathWithin -Path $installDirectory -Root $LocalRoot)) {
+        throw "The expected AzTray install directory is outside LOCALAPPDATA: $installDirectory"
+    }
+
+    try {
+        $directoryExists = Test-Path -LiteralPath $installDirectory -PathType Container -ErrorAction Stop
+    }
+    catch {
+        throw "Unable to inspect the expected AzTray install directory safely: $($_.Exception.Message)"
+    }
+
+    if ($directoryExists) {
+        try {
+            $directoryInfo = Get-Item -LiteralPath $installDirectory -ErrorAction Stop
+        }
+        catch {
+            throw "Unable to inspect the expected AzTray install directory safely: $($_.Exception.Message)"
+        }
+
+        if ($directoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Refusing to use a reparse-point AzTray install directory: $installDirectory"
         }
     }
+
+    return [IO.Path]::GetFullPath((Join-Path $installDirectory $script:ExpectedExecutableName))
+}
+
+function Assert-ExpectedAzTrayRegistration {
+    param(
+        [Parameter(Mandatory = $true)][string]$LocalRoot,
+        [Parameter(Mandatory = $true)][string]$ExpectedInstallDirectory
+    )
 
     $uninstallRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
-    if (Test-Path -LiteralPath $uninstallRoot) {
-        foreach ($key in @(Get-ChildItem -LiteralPath $uninstallRoot -ErrorAction SilentlyContinue)) {
-            $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
-            if ($null -eq $properties) {
-                continue
-            }
-
-            $displayName = [string]$properties.DisplayName
-            if ($displayName -notmatch '(?i)^AzTray(?:\s|$)') {
-                continue
-            }
-
-            $installLocation = [string]$properties.InstallLocation
-            if ([string]::IsNullOrWhiteSpace($installLocation)) {
-                continue
-            }
-
-            $installLocation = [Environment]::ExpandEnvironmentVariables($installLocation.Trim('"'))
-            $locationIsInScope = Test-PathWithin -Path $installLocation -Root $LocalRoot
-            if ($locationIsInScope -and -not $candidateDirectories.Contains($installLocation)) {
-                $candidateDirectories.Insert(0, $installLocation)
-            }
-        }
+    if (-not (Test-Path -LiteralPath $uninstallRoot)) {
+        return
     }
 
-    foreach ($directory in $candidateDirectories) {
-        if (-not (Test-PathWithin -Path $directory -Root $LocalRoot)) {
+    try {
+        $keys = @(Get-ChildItem -LiteralPath $uninstallRoot -ErrorAction Stop)
+    }
+    catch {
+        throw "Unable to inspect the current-user AzTray installation registration safely: $($_.Exception.Message)"
+    }
+
+    $registrations = @()
+    foreach ($key in $keys) {
+        try {
+            $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
+        }
+        catch {
+            throw "Unable to inspect uninstall registration '$($key.PSChildName)' safely: $($_.Exception.Message)"
+        }
+
+        $displayName = if ($null -ne $properties.PSObject.Properties['DisplayName']) {
+            [string]$properties.DisplayName
+        }
+        else {
+            ''
+        }
+        if ($displayName -notmatch '(?i)^AzTray(?:\s|$)') {
             continue
         }
 
-        foreach ($name in @('AzTray.exe', 'az-tray.exe', 'aztray.exe')) {
-            $candidate = Join-Path $directory $name
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-                return (Get-Item -LiteralPath $candidate).FullName
-            }
+        $installLocation = if ($null -ne $properties.PSObject.Properties['InstallLocation']) {
+            [string]$properties.InstallLocation
         }
+        else {
+            ''
+        }
+        if ([string]::IsNullOrWhiteSpace($installLocation)) {
+            throw "AzTray uninstall registration '$($key.PSChildName)' has no install location; refusing an ambiguous upgrade."
+        }
+
+        try {
+            $normalizedLocation = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($installLocation.Trim('"'))).TrimEnd('\')
+        }
+        catch {
+            throw "AzTray uninstall registration '$($key.PSChildName)' has an invalid install location; refusing an ambiguous upgrade."
+        }
+
+        $normalizedExpected = [IO.Path]::GetFullPath($ExpectedInstallDirectory).TrimEnd('\')
+        if (-not $normalizedLocation.Equals($normalizedExpected, [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-PathWithin -Path $normalizedLocation -Root $LocalRoot)) {
+            throw "AzTray is registered at '$normalizedLocation', but this installer only accepts '$normalizedExpected'; refusing to update an ambiguous installation."
+        }
+
+        $registrations += $key.PSChildName
     }
 
-    throw "AzTray installed, but its executable could not be found safely under '$LocalRoot'."
+    if ($registrations.Count -gt 1) {
+        throw "Multiple AzTray uninstall registrations were found ($($registrations -join ', ')); refusing an ambiguous upgrade."
+    }
+}
+
+function Get-AzTrayExecutable {
+    param([Parameter(Mandatory = $true)][string]$LocalRoot)
+
+    $candidate = Get-ExpectedAzTrayExecutablePath -LocalRoot $LocalRoot
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw "AzTray installed, but its executable was not found at the expected path '$candidate'."
+    }
+
+    $fileInfo = Get-Item -LiteralPath $candidate -ErrorAction Stop
+    if ($fileInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "Refusing to launch a reparse-point AzTray executable: $candidate"
+    }
+
+    return $fileInfo.FullName
+}
+
+function Get-AzTrayRunningProcess {
+    param([Parameter(Mandatory = $true)][string]$ExpectedExecutablePath)
+
+    $expectedPath = [IO.Path]::GetFullPath($ExpectedExecutablePath)
+    try {
+        $candidates = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = '$($script:ExpectedExecutableName)'" -ErrorAction Stop)
+    }
+    catch {
+        throw "Unable to inspect AzTray processes safely: $($_.Exception.Message). Close AzTray from its tray menu and retry."
+    }
+
+    $found = @()
+    foreach ($candidate in $candidates) {
+        $processId = [int]$candidate.ProcessId
+        $rawPath = [string]$candidate.ExecutablePath
+        if ([string]::IsNullOrWhiteSpace($rawPath)) {
+            throw "Windows did not report the executable path for az-tray.exe (PID $processId); refusing to guess which process is safe to update."
+        }
+
+        try {
+            $processPath = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($rawPath.Trim('"')))
+        }
+        catch {
+            throw "Windows reported an invalid executable path for az-tray.exe (PID $processId); refusing to guess which process is safe to update."
+        }
+
+        if (-not $processPath.Equals($expectedPath, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Found az-tray.exe (PID $processId) at '$processPath', but the expected AzTray path is '$expectedPath'; close the ambiguous process and retry."
+        }
+
+        $found += $candidate
+    }
+
+    if ($found.Count -gt 1) {
+        $processIds = ($found | ForEach-Object { [int]$_.ProcessId }) -join ', '
+        throw "Multiple AzTray processes are running at '$expectedPath' (PIDs $processIds); refusing an ambiguous upgrade."
+    }
+
+    return @($found)
+}
+
+function Wait-ForAzTrayExit {
+    param([Parameter(Mandatory = $true)][string]$ExpectedExecutablePath)
+
+    $running = @(Get-AzTrayRunningProcess -ExpectedExecutablePath $ExpectedExecutablePath)
+    if ($running.Count -eq 0) {
+        return
+    }
+
+    $processId = [int]$running[0].ProcessId
+    Write-Warn "AzTray is running from the expected user install path (PID $processId)."
+    Write-Host 'Use the AzTray tray menu and choose Quit AzTray, then select Stop & quit so the app-owned Azurite processes close through their ownership-aware shutdown path.'
+    Write-Host 'After the tray process exits, return here and press Enter. This installer waits for a clean exit and leaves AzTray and its child processes intact.'
+    $answer = Read-Host 'Press Enter to continue, or type Q to cancel the upgrade'
+    if ($answer -match '^(?i:q|quit|cancel)$') {
+        throw 'AzTray upgrade cancelled. The running app and its Azurite services were left untouched.'
+    }
+
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        $running = @(Get-AzTrayRunningProcess -ExpectedExecutablePath $ExpectedExecutablePath)
+        if ($running.Count -eq 0) {
+            Write-Info 'AzTray exited cleanly; continuing with the update.'
+            return
+        }
+
+        if ((Get-Date) -ge $deadline) {
+            break
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ($true)
+
+    throw "AzTray is still running at '$ExpectedExecutablePath'. Quit it from the tray menu and rerun the install command; the installer did not start and no process was terminated."
 }
 
 function Remove-WorkDirectory {
@@ -254,11 +390,13 @@ function Remove-WorkDirectory {
 }
 
 $localRoot = Get-LocalAppDataRoot
+$expectedExecutablePath = Get-ExpectedAzTrayExecutablePath -LocalRoot $localRoot
+$expectedInstallDirectory = [IO.Path]::GetDirectoryName($expectedExecutablePath)
 $workDirectory = $null
 $installerFullPath = $null
 
 try {
-    Write-Info 'Using current-user scope; this script never requests elevation.'
+    Write-Info 'Using current-user scope; this script requires no elevation.'
     Write-Info "LOCALAPPDATA: $localRoot"
 
     if ($SmokeCheck) {
@@ -276,6 +414,8 @@ try {
         Write-Info 'Smoke check passed. No installer was executed and no files were changed.'
         exit 0
     }
+
+    Assert-ExpectedAzTrayRegistration -LocalRoot $localRoot -ExpectedInstallDirectory $expectedInstallDirectory
 
     if ($InstallerPath) {
         $installerFullPath = [IO.Path]::GetFullPath($InstallerPath)
@@ -318,7 +458,8 @@ try {
         Assert-InstallerHash -Path $installerFullPath -ExpectedHash $expected
     }
 
-    Write-Info 'Running the NSIS installer silently.'
+    Wait-ForAzTrayExit -ExpectedExecutablePath $expectedExecutablePath
+    Write-Info 'Running the NSIS installer silently in the current-user scope.'
     $installerProcess = Start-Process -FilePath $installerFullPath -ArgumentList '/S' -Wait -PassThru
     if ($installerProcess.ExitCode -ne 0) {
         throw "AzTray installer exited with code $($installerProcess.ExitCode)."
@@ -333,6 +474,10 @@ try {
     Write-Info "Launching installed app: $executable"
     Start-Process -FilePath $executable -WorkingDirectory ([IO.Path]::GetDirectoryName($executable)) | Out-Null
     Write-Info 'AzTray is running in the tray.'
+}
+catch {
+    Write-Error "[AzTray] $($_.Exception.Message)"
+    throw
 }
 finally {
     Remove-WorkDirectory -Path $workDirectory

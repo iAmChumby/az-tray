@@ -14,7 +14,9 @@ From a standard PowerShell window, run the installer hosted by the public reposi
 irm https://raw.githubusercontent.com/iAmChumby/az-tray/main/scripts/install.ps1 | iex
 ```
 
-The script downloads the latest stable x64 release, verifies `SHA256SUMS.txt`, installs under `%LOCALAPPDATA%`, and launches the tray. The NSIS bundle uses current-user install mode, so the AzTray install and sign-in startup registration do not request UAC elevation.
+The script downloads the latest stable x64 release, verifies `SHA256SUMS.txt`, installs under `%LOCALAPPDATA%`, and launches the tray. Running the same command again updates the existing current-user installation in place. The NSIS bundle uses current-user install mode, so the AzTray install and sign-in startup registration do not request UAC elevation.
+
+If AzTray is already running during an update, use the tray menu **Quit AzTray → Stop & quit**, then press Enter in the installer. AzTray closes only the app-owned Azurite services through its own ownership-aware path; the installer waits for the tray process to exit before starting NSIS and leaves it and its child processes intact. A 30-second timeout, `Q` cancellation, an ambiguous install registration, or an unexpected same-name process path leaves the current installation untouched and asks you to retry after resolving the condition. `%APPDATA%\AzTray`, Azurite data directories, and the per-user `HKCU` startup registration remain outside the script's cleanup scope.
 
 You can also download `az-tray-x64-setup.exe` directly from the [latest release](https://github.com/iAmChumby/az-tray/releases/latest) and run it. The release page includes the matching `SHA256SUMS.txt` file.
 
