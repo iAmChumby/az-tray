@@ -53,6 +53,16 @@ Click **Save settings**, then **Refresh**. Start all three services from the pop
 
 If the dashboard reports a port conflict, it identifies the owning process before offering **Free port**. AzTray only stops a process after the confirmation action and only treats its own process tree as managed.
 
+### Connect an MCP client
+
+While the tray app is running, AzTray serves MCP Streamable HTTP at **`http://127.0.0.1:47551/mcp`**. Add that URL as an HTTP MCP server in your LLM client. The dashboard's **Settings → Local MCP** card shows the endpoint, lets you copy it, and reports whether the server is listening. If another process owns port 47551, the tray app stays open and that card shows the bind error.
+
+Agents setting this up themselves should follow the [AzTray MCP installation and client setup guide](docs/AGENT-MCP-SETUP.md). It covers building the MCP-capable app, registering the local server in Codex or another MCP client, and verifying the connection.
+
+The tools cover the app's management surface: inspect the live snapshot and runtime, update configuration, start/stop/restart each service or all services, inspect and release a configured port owner, read/save/clear logs, get service connection strings, and quit AzTray. The endpoint accepts both the current MCP request-metadata protocol (`2026-07-28`) and the older `2025-11-25` initialization flow. A client can discover exact tool names and argument schemas with `tools/list`.
+
+The server binds only to loopback and checks HTTP Host and Origin. MCP clients can perform the same consequential operations as the UI. In particular, `aztray_free_port` requires the observed PID and process start time plus `confirmed: true`; AzTray checks identity again before terminating that port owner. Connect trusted local clients and review their proposed tool calls. AzTray manages Azurite processes and settings; it does not browse or edit stored Blob, Queue, or Table data.
+
 ### Logs and failed starts
 
 Service output and startup diagnostics appear in the dashboard's **Live logs** panel while AzTray is running. Logs stay in memory until you click **Export logs** and choose a `.txt` destination in the native save dialog. Export the merged view to share all three services' output, or select a service to export only its logs. The app does not create a log file automatically; export before quitting if you need to keep the session's diagnostics.

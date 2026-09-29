@@ -3,7 +3,7 @@
 import * as React from "react";
 import { aztrayIpc } from "@/src/lib/ipc";
 import { actionErrorMessage } from "@/src/lib/actionError";
-import type { AppSnapshot, Config, EngineSnapshot, ServiceName, ServiceSnapshot, ServiceState } from "@/src/lib/types";
+import type { AppSnapshot, Config, EngineSnapshot, McpStatus, ServiceName, ServiceSnapshot, ServiceState } from "@/src/lib/types";
 import type { FreePortResult } from "@/src/lib/types";
 
 export type { Config, ServiceName, ServiceSnapshot, ServiceState };
@@ -24,6 +24,7 @@ export interface AzTrayModel {
   engine: EngineSnapshot;
   loading: boolean;
   error: string | null;
+  mcpStatus: McpStatus | null;
   selectedService: ServiceName;
   runningCount: number;
   allRunning: boolean;
@@ -51,6 +52,7 @@ export function useAzTray(): AzTrayModel {
   const [engine, setEngine] = React.useState<EngineSnapshot>(EMPTY_ENGINE);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [mcpStatus, setMcpStatus] = React.useState<McpStatus | null>(null);
   const [selectedService, setSelectedService] = React.useState<ServiceName>("blob");
   const [lastEvent, setLastEvent] = React.useState("Connecting to AzTray controller");
 
@@ -64,6 +66,11 @@ export function useAzTray(): AzTrayModel {
   React.useEffect(() => {
     let alive = true;
     const unlisten: (() => void)[] = [];
+    void aztrayIpc.getMcpStatus().then((next) => {
+      if (alive) setMcpStatus(next);
+    }).catch((cause: unknown) => {
+      if (alive) setMcpStatus({ endpoint: "http://127.0.0.1:47551/mcp", active: false, error: actionErrorMessage(cause, "MCP status unavailable") });
+    });
     void Promise.all([
       aztrayIpc.getSnapshot(),
       aztrayIpc.subscribe("snapshot_updated", (next) => {
@@ -180,6 +187,7 @@ export function useAzTray(): AzTrayModel {
   const refresh = React.useCallback(async () => {
     try {
       apply(await aztrayIpc.getSnapshot());
+      setMcpStatus(await aztrayIpc.getMcpStatus());
       setLastEvent("Status refreshed");
     } catch (cause) { actionError(cause, "Unable to refresh status"); }
   }, [actionError, apply]);
@@ -242,6 +250,7 @@ export function useAzTray(): AzTrayModel {
     engine,
     loading,
     error,
+    mcpStatus,
     selectedService,
     runningCount: snapshot ? Object.values(snapshot.services).filter((service) => service.state === "running").length : 0,
     allRunning: snapshot ? Object.values(snapshot.services).every((service) => service.state === "running") : false,

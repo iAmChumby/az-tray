@@ -115,6 +115,7 @@ export type SaveLogsResult = { path: string; lineCount: number };
 
 export type QuitMode = "stop_and_quit" | "leave_running" | "cancel";
 export type QuitResult = { mode: QuitMode; stoppedServices: ServiceName[] };
+export type McpStatus = { endpoint: string; active: boolean; error: string | null };
 
 /** The typed invoke boundary. Command names intentionally remain snake_case. */
 export type CommandMap = {
@@ -134,6 +135,7 @@ export type CommandMap = {
   get_connection_string: { args: { serviceName: ServiceName }; result: string };
   clear_logs: { args: { serviceName?: ServiceName }; result: AppSnapshot };
   quit_app: { args: { mode: QuitMode }; result: QuitResult };
+  get_mcp_status: { args: undefined; result: McpStatus };
 };
 
 export type CommandName = keyof CommandMap;

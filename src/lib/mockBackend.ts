@@ -181,6 +181,8 @@ export async function mockInvoke<K extends CommandName>(command: K, args: Comman
     }
     case "quit_app":
       return { mode: (args as { mode: "stop_and_quit" | "leave_running" | "cancel" }).mode, stoppedServices: [] } as CommandResult<K>;
+    case "get_mcp_status":
+      return { endpoint: "http://127.0.0.1:47551/mcp", active: false, error: "MCP runs in the native tray app." } as CommandResult<K>;
     default:
       throw new Error(`Mock command not implemented: ${String(command)}`);
   }

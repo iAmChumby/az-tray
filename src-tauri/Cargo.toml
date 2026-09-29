@@ -1,6 +1,6 @@
 [package]
 name = "az-tray"
-version = "0.1.5"
+version = "0.2.0"
 description = "A fast Windows tray controller for Azurite"
 authors = ["AzTray contributors"]
 edition = "2021"
@@ -16,6 +16,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tiny_http = "0.12"
 
 [build-dependencies]
 tauri-build = { version = "2.4", features = [] }

@@ -1,20 +1,26 @@
-pub mod tray;
-pub mod types;
 pub mod config;
 pub mod engine;
 pub mod logs;
+pub mod mcp;
 pub mod ports;
+pub mod tray;
+pub mod types;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use engine::{AppEngine, EngineEvent};
 use tauri::{async_runtime, AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
-use types::{AppSnapshot, Config, EngineSnapshot, FreePortResult, LogEntry, LogsQuery, PortOwner, PortOwnerExpectation, QuitMode, QuitResult, SaveLogsArgs, SaveLogsResult, ServiceName};
+use types::{
+    AppSnapshot, Config, EngineSnapshot, FreePortResult, LogEntry, LogsQuery, PortOwner,
+    PortOwnerExpectation, QuitMode, QuitResult, SaveLogsArgs, SaveLogsResult, ServiceName,
+};
 
 #[derive(Clone)]
 pub struct AppState {
     pub engine: AppEngine,
+    pub mcp_status: Arc<RwLock<mcp::McpStatus>>,
+    pub mcp_server: Arc<Mutex<Option<mcp::McpServer>>>,
 }
 
 fn engine_from(app: &AppHandle) -> AppEngine {
@@ -58,17 +64,26 @@ async fn check_engine(app: AppHandle) -> EngineSnapshot {
 
 #[tauri::command]
 async fn start_service(app: AppHandle, service_name: ServiceName) -> Result<AppSnapshot, String> {
-    blocking_result(engine_from(&app), move |engine| engine.start_service(service_name)).await
+    blocking_result(engine_from(&app), move |engine| {
+        engine.start_service(service_name)
+    })
+    .await
 }
 
 #[tauri::command]
 async fn stop_service(app: AppHandle, service_name: ServiceName) -> Result<AppSnapshot, String> {
-    blocking_result(engine_from(&app), move |engine| engine.stop_service(service_name)).await
+    blocking_result(engine_from(&app), move |engine| {
+        engine.stop_service(service_name)
+    })
+    .await
 }
 
 #[tauri::command]
 async fn restart_service(app: AppHandle, service_name: ServiceName) -> Result<AppSnapshot, String> {
-    blocking_result(engine_from(&app), move |engine| engine.restart_service(service_name)).await
+    blocking_result(engine_from(&app), move |engine| {
+        engine.restart_service(service_name)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -88,32 +103,70 @@ async fn restart_all(app: AppHandle) -> Result<AppSnapshot, String> {
 
 #[tauri::command]
 async fn identify_port_owner(app: AppHandle, service_name: ServiceName) -> Option<PortOwner> {
-    blocking_value(engine_from(&app), move |engine| engine.identify_port_owner(service_name)).await
+    blocking_value(engine_from(&app), move |engine| {
+        engine.identify_port_owner(service_name)
+    })
+    .await
 }
 
 #[tauri::command]
-async fn free_port(app: AppHandle, service_name: ServiceName, pid: u32, started_at: Option<String>) -> Result<FreePortResult, String> {
-    blocking_result(engine_from(&app), move |engine| engine.free_port(PortOwnerExpectation { service_name, pid, started_at })).await
+async fn free_port(
+    app: AppHandle,
+    service_name: ServiceName,
+    pid: u32,
+    started_at: Option<String>,
+) -> Result<FreePortResult, String> {
+    blocking_result(engine_from(&app), move |engine| {
+        engine.free_port(PortOwnerExpectation {
+            service_name,
+            pid,
+            started_at,
+        })
+    })
+    .await
 }
 
 #[tauri::command]
-async fn get_logs(app: AppHandle, service_name: Option<ServiceName>, limit: Option<usize>) -> Vec<LogEntry> {
-    blocking_value(engine_from(&app), move |engine| engine.get_logs(LogsQuery { service_name, limit })).await
+async fn get_logs(
+    app: AppHandle,
+    service_name: Option<ServiceName>,
+    limit: Option<usize>,
+) -> Vec<LogEntry> {
+    blocking_value(engine_from(&app), move |engine| {
+        engine.get_logs(LogsQuery {
+            service_name,
+            limit,
+        })
+    })
+    .await
 }
 
 #[tauri::command]
-async fn save_logs(app: AppHandle, service_name: Option<ServiceName>, path: Option<String>) -> Result<SaveLogsResult, String> {
-    blocking_result(engine_from(&app), move |engine| engine.save_logs(SaveLogsArgs { service_name, path })).await
+async fn save_logs(
+    app: AppHandle,
+    service_name: Option<ServiceName>,
+    path: Option<String>,
+) -> Result<SaveLogsResult, String> {
+    blocking_result(engine_from(&app), move |engine| {
+        engine.save_logs(SaveLogsArgs { service_name, path })
+    })
+    .await
 }
 
 #[tauri::command]
 async fn get_connection_string(app: AppHandle, service_name: ServiceName) -> String {
-    blocking_value(engine_from(&app), move |engine| engine.connection_string(service_name)).await
+    blocking_value(engine_from(&app), move |engine| {
+        engine.connection_string(service_name)
+    })
+    .await
 }
 
 #[tauri::command]
 async fn clear_logs(app: AppHandle, service_name: Option<ServiceName>) -> AppSnapshot {
-    blocking_value(engine_from(&app), move |engine| engine.clear_logs(service_name)).await
+    blocking_value(engine_from(&app), move |engine| {
+        engine.clear_logs(service_name)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -126,12 +179,29 @@ async fn quit_app(app: AppHandle, mode: QuitMode) -> Result<QuitResult, String> 
     Ok(result)
 }
 
+#[tauri::command]
+fn get_mcp_status(app: AppHandle) -> mcp::McpStatus {
+    app.state::<AppState>()
+        .mcp_status
+        .read()
+        .map(|status| status.clone())
+        .unwrap_or_else(|_| mcp::McpStatus {
+            endpoint: mcp::MCP_ENDPOINT.to_string(),
+            active: false,
+            error: Some("MCP status is unavailable because its state lock was poisoned".into()),
+        })
+}
+
 /// Build and run the AzTray process. The controller stays alive in the tray
 /// while both webviews remain hidden; window close requests are converted to
 /// hide operations so service processes can keep running.
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
-        .manage(AppState { engine: AppEngine::new() })
+        .manage(AppState {
+            engine: AppEngine::new(),
+            mcp_status: Arc::new(RwLock::new(mcp::McpStatus::stopped())),
+            mcp_server: Arc::new(Mutex::new(None)),
+        })
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if argv.iter().any(|argument| argument == "--popover") {
                 let _ = tray::toggle_popover(app);
@@ -147,11 +217,31 @@ pub fn run() -> tauri::Result<()> {
         .setup(|app| {
             tray::build(&app.handle())?;
 
-            let engine = app.state::<AppState>().engine.clone();
+            let state = app.state::<AppState>();
+            let engine = state.engine.clone();
             let handle = app.handle().clone();
+            let mcp_status = state.mcp_status.clone();
+            let quit_handle = handle.clone();
+            let on_quit = Arc::new(move || quit_handle.exit(0));
+            match mcp::McpServer::start(engine.clone(), mcp_status.clone(), on_quit) {
+                Ok(server) => {
+                    if let Ok(mut slot) = state.mcp_server.lock() {
+                        *slot = Some(server);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("AzTray MCP endpoint startup failed: {error}");
+                    if let Ok(mut status) = mcp_status.write() {
+                        status.active = false;
+                        status.error = Some(error);
+                    }
+                }
+            }
             engine.set_event_handler(Some(Arc::new(move |event| {
                 let result = match event {
-                    EngineEvent::SnapshotUpdated(payload) => handle.emit("snapshot_updated", payload),
+                    EngineEvent::SnapshotUpdated(payload) => {
+                        handle.emit("snapshot_updated", payload)
+                    }
                     EngineEvent::ServiceUpdated(payload) => handle.emit("service_updated", payload),
                     EngineEvent::LogEntry(payload) => handle.emit("log_entry", payload),
                     EngineEvent::EngineUpdated(payload) => handle.emit("engine_updated", payload),
@@ -167,17 +257,15 @@ pub fn run() -> tauri::Result<()> {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
-            match event {
-                WindowEvent::CloseRequested { api, .. } => {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
-                WindowEvent::Focused(false) if window.label() == "popover" => {
-                    tray::debounce_hide(&window.app_handle(), window.label());
-                }
-                _ => {}
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.hide();
             }
+            WindowEvent::Focused(false) if window.label() == "popover" => {
+                tray::debounce_hide(&window.app_handle(), window.label());
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
@@ -195,7 +283,8 @@ pub fn run() -> tauri::Result<()> {
             save_logs,
             get_connection_string,
             clear_logs,
-            quit_app
+            quit_app,
+            get_mcp_status
         ])
         .build(tauri::generate_context!())
         .map(|app| app.run(|_, _| {}))

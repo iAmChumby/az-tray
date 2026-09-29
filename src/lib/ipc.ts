@@ -83,6 +83,10 @@ export function quitApp(mode: CommandMap["quit_app"]["args"]["mode"]) {
   return invokeCommand("quit_app", { mode });
 }
 
+export function getMcpStatus() {
+  return invokeCommand("get_mcp_status", undefined);
+}
+
 export function subscribe<K extends EventName>(event: K, handler: (payload: EventMap[K]) => void): Promise<UnlistenFn> {
   if (isMockRuntime() || !isTauriRuntime()) return Promise.resolve(subscribeMock(event, handler));
   return listen<EventMap[K]>(event, ({ payload }) => handler(payload));
@@ -105,5 +109,6 @@ export const aztrayIpc = {
   getConnectionString,
   clearLogs,
   quitApp,
+  getMcpStatus,
   subscribe,
 };
