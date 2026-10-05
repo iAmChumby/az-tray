@@ -465,6 +465,10 @@ try {
         throw "AzTray installer exited with code $($installerProcess.ExitCode)."
     }
 
+    $installedExe = Get-AzTrayExecutable -LocalRoot $localRoot
+    $installedVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
+    Write-Info "Installed AzTray version: $installedVersion"
+
     if ($SkipLaunch) {
         Write-Info 'Install completed. Launch skipped by request.'
         exit 0

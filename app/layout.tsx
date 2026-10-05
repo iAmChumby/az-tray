@@ -3,7 +3,6 @@ import Script from "next/script";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "./globals.css";
-import "./aztray-shell.css";
 
 const themeInitScript = `(() => {
   try {

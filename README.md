@@ -2,6 +2,10 @@
 
 AzTray is a Windows 11 tray controller for local [Azurite](https://github.com/Azure/Azurite) development. It manages Azurite Blob, Queue, and Table processes from a compact tray popover or a small dashboard with live logs, port ownership, connection strings, and settings.
 
+![AzTray tray popover](docs/screenshots/popover-dark.png)
+
+![AzTray dashboard](docs/screenshots/dashboard-dark.png)
+
 The app is app-only: the installer installs AzTray, while Node.js and Azurite remain a separate user-space prerequisite. AzTray never changes an existing `azctl` installation or Azurite data.
 
 ## Use it tomorrow
@@ -49,23 +53,55 @@ Open the dashboard from the tray popover, open **Settings**, and set:
 - **Azurite executable override:** the full directory path printed by `Write-Output $azuriteRoot` (or the full path to `azurite-blob.cmd`).
 - **Node executable override:** the full path to `node.exe` when Node is not already on `PATH`.
 
-Click **Save settings**, then **Refresh**. Start all three services from the popover or dashboard. The defaults are `127.0.0.1`, Blob `10000`, Queue `10001`, Table `10002`, and data in `%USERPROFILE%\.azurite`.
+Click **Save settings**, then **Refresh**. Start all three services from the popover or dashboard. The default instance uses `127.0.0.1`, Blob `10000`, Queue `10001`, Table `10002`, and data in `%USERPROFILE%\.azurite`.
 
 If the dashboard reports a port conflict, it identifies the owning process before offering **Free port**. AzTray only stops a process after the confirmation action and only treats its own process tree as managed.
 
+### Multiple Azurite instances
+
+An **instance** is one Blob + Queue + Table trio with its own host, ports, and data directory. Create as many as you like from the dashboard's **New instance** dialog (or over MCP) and run them side by side, for example one per project or one per test suite. Each instance has its own start/stop/restart controls, live logs, and settings.
+
+- New instances get the next free port trio automatically (10003-10005, 10006-10008, and so on, skipping anything busy) and their own data directory under `%LOCALAPPDATA%\AzTray\instances\<id>\data`.
+- Ports and data directories cannot overlap between instances or with the MCP port range; the error names the instance that owns the conflict.
+- Deleting an instance requires it to be stopped and never touches its data on disk.
+- Upgrading from v0.2 or earlier migrates your single configuration to an instance named `default` (the original is kept as `%APPDATA%\AzTray\config.v1.json.bak`).
+- Quit with **Stop & quit** stops the app-owned services of every instance.
+
+![Creating a new instance](docs/screenshots/create-instance-dark.png)
+
+### Connection strings for apps and agents
+
+Each instance shows a **Connection** panel with a combined connection string, per-service strings, and endpoints, all with copy buttons. Strings use the standard `devstoreaccount1` development account:
+
+```text
+DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=<dev key>;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;
+```
+
+![Instance connection panel](docs/screenshots/dashboard-connection-dark.png)
+
+Agents can provision an instance on demand: call `aztray_create_instance` with a `name` and it returns a running instance plus `connection.connectionString`; call `aztray_stop_instance` then `aztray_delete_instance` when finished.
+
 ### Connect an MCP client
 
-While the tray app is running, AzTray serves MCP Streamable HTTP at **`http://127.0.0.1:47551/mcp`**. Add that URL as an HTTP MCP server in your LLM client. The dashboard's **Settings → Local MCP** card shows the endpoint, lets you copy it, and reports whether the server is listening. If another process owns port 47551, the tray app stays open and that card shows the bind error.
+While the tray app is running, AzTray serves MCP Streamable HTTP at **`http://127.0.0.1:47551/mcp`**. Add that URL as an HTTP MCP server in your LLM client. MCP is enabled by default and needs **AzTray v0.3.0 or later**; earlier releases do not contain the MCP server. Check the version in **Settings → About**.
 
-Agents setting this up themselves should follow the [AzTray MCP installation and client setup guide](docs/AGENT-MCP-SETUP.md). It covers building the MCP-capable app, registering the local server in Codex or another MCP client, and verifying the connection.
+If port 47551 is taken, AzTray falls back to the next free port (47552 to 47560) and retries automatically if binding fails. The popover footer and the dashboard's **Settings → Local MCP** card show the live URL, port, last event, any error, and a **Retry** button. Turn off port fallback in that card if you need a fixed URL.
 
-The tools cover the app's management surface: inspect the live snapshot and runtime, update configuration, start/stop/restart each service or all services, inspect and release a configured port owner, read/save/clear logs, get service connection strings, and quit AzTray. The endpoint accepts both the current MCP request-metadata protocol (`2026-07-28`) and the older `2025-11-25` initialization flow. A client can discover exact tool names and argument schemas with `tools/list`.
+![Local MCP card](docs/screenshots/dashboard-mcp-dark.png)
+
+Agents setting this up themselves should follow the [AzTray MCP installation and client setup guide](docs/AGENT-MCP-SETUP.md). It covers installing the release, registering the local server in Codex or another MCP client, and verifying the connection.
+
+The tools cover the app's management surface: inspect the live snapshot and runtime, create/update/delete instances, start/stop/restart each service, instance, or everything, inspect and release a configured port owner, read/save/clear logs, get connection strings, read the AzTray app log, and quit AzTray. Tools that act on an instance take an optional `instance` argument (id or name); omit it to target the default or only instance. The endpoint accepts both the current MCP request-metadata protocol (`2026-07-28`) and the older `2025-11-25` initialization flow. A client can discover exact tool names and argument schemas with `tools/list`.
 
 The server binds only to loopback and checks HTTP Host and Origin. MCP clients can perform the same consequential operations as the UI. In particular, `aztray_free_port` requires the observed PID and process start time plus `confirmed: true`; AzTray checks identity again before terminating that port owner. Connect trusted local clients and review their proposed tool calls. AzTray manages Azurite processes and settings; it does not browse or edit stored Blob, Queue, or Table data.
 
 ### Logs and failed starts
 
-Service output and startup diagnostics appear in the dashboard's **Live logs** panel while AzTray is running. Logs stay in memory until you click **Export logs** and choose a `.txt` destination in the native save dialog. Export the merged view to share all three services' output, or select a service to export only its logs. The app does not create a log file automatically; export before quitting if you need to keep the session's diagnostics.
+Service output and startup diagnostics appear in the dashboard's **Live logs** panel while AzTray is running. Azurite output stays in memory until you click **Export logs** and choose a `.txt` destination in the native save dialog. Export the merged view to share all of an instance's output, or select a service to export only its logs.
+
+AzTray's own events (startup, MCP bind attempts and failures, port fallback, config migration) are written to **`%APPDATA%\AzTray\logs\aztray.log`**, rotated at 1 MB to `aztray.log.1`. The dashboard's **Settings → Diagnostics** section shows the path and the most recent lines. Attach this file when reporting an issue.
+
+![Instance logs](docs/screenshots/dashboard-logs-dark.png)
 
 ## Runtime prerequisites
 

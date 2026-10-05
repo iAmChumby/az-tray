@@ -2,164 +2,141 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Theme is driven by <html data-theme="light|dark"> (see layout.tsx init script). */
+@custom-variant dark (&:is([data-theme="dark"] *, [data-theme="dark"]));
 
+/*
+ * AzTray palette: graphite with a cool blue cast (Azure-adjacent) and one azure
+ * brand colour. Status colours are a separate, fixed system so "running" is
+ * never confused with the brand.
+ */
 :root {
   color-scheme: dark;
-  --background: #0a0a0c;
-  --surface: #17181c;
-  --surface-raised: #1e2025;
-  --surface-hover: #27292f;
-  --surface-glass: rgb(23 24 28 / 96%);
-  --foreground: #f1f2f4;
-  --muted-foreground: #b1b4bc;
-  --faint-foreground: #848994;
-  --seam: rgb(255 255 255 / 9%);
-  --seam-strong: rgb(255 255 255 / 16%);
-  --focus: #8df0ba;
-  --accent: #5ee6a3;
-  --accent-strong: #35c982;
-  --accent-ink: #06140d;
-  --status-running: #5ee6a3;
-  --status-starting: #f3bd62;
-  --status-broken: #ff718d;
-  --status-occupied: #d39cff;
-  --status-stopped: #b1b4bc;
-  --glyph-blob: #76b8ff;
-  --glyph-queue: #61d9a2;
-  --glyph-table: #c2a0ff;
-  --radius-control: 10px;
-  --radius-card: 16px;
-  --radius-raised: 22px;
-  --ease-out: cubic-bezier(.2, .75, .25, 1);
-  --dur-hover: 180ms;
-  --dur-view: 260ms;
-  --shadow-card: 0 1px 0 rgb(255 255 255 / 5%) inset, 0 14px 34px -24px rgb(0 0 0 / 82%), 0 0 0 1px rgb(255 255 255 / 3%);
-  --shadow-raised: 0 1px 0 rgb(255 255 255 / 8%) inset, 0 20px 44px -24px rgb(0 0 0 / 88%), 0 0 0 1px rgb(255 255 255 / 7%);
+  --background: #0b0d11;
+  --card: #12151a;
+  --popover: #181c23;
+  --secondary: #1b2028;
+  --muted: #161a21;
+  --accent: #212731;
+  --border: rgb(255 255 255 / 8%);
+  --border-strong: rgb(255 255 255 / 15%);
+  --input: rgb(255 255 255 / 14%);
+  --foreground: #e9ebef;
+  --card-foreground: #e9ebef;
+  --popover-foreground: #e9ebef;
+  --secondary-foreground: #e9ebef;
+  --accent-foreground: #ffffff;
+  --muted-foreground: #98a0ad;
+  --faint-foreground: #6e7685;
+  --primary: #6aa4ff;
+  --primary-foreground: #06101f;
+  --ring: #8db8ff;
+  --destructive: #ff6b86;
 
-  --card: var(--surface);
-  --card-foreground: var(--foreground);
-  --popover: var(--surface-raised);
-  --popover-foreground: var(--foreground);
-  --primary: var(--accent);
-  --primary-foreground: var(--accent-ink);
-  --secondary: var(--surface-raised);
-  --secondary-foreground: var(--foreground);
-  --muted: var(--surface);
-  --muted-foreground: #b1b4bc;
-  --accent-foreground: var(--accent-ink);
-  --destructive: var(--status-broken);
-  --border: var(--seam);
-  --input: var(--seam-strong);
-  --ring: var(--focus);
-  --chart-1: var(--accent);
+  --status-running: #4ade9a;
+  --status-starting: #f2b84b;
+  --status-broken: #ff6b86;
+  --status-occupied: #c79bff;
+  --status-stopped: #858c99;
+  --svc-blob: #6aa4ff;
+  --svc-queue: #4ade9a;
+  --svc-table: #c79bff;
+
+  --chart-1: var(--primary);
   --chart-2: var(--status-starting);
   --chart-3: var(--status-broken);
   --chart-4: var(--status-occupied);
-  --chart-5: var(--glyph-blob);
+  --chart-5: var(--status-running);
   --radius: 0.625rem;
-  --sidebar: var(--surface);
+  --sidebar: #0e1116;
   --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--accent);
-  --sidebar-primary-foreground: var(--accent-ink);
-  --sidebar-accent: var(--surface-hover);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
   --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--seam);
-  --sidebar-ring: var(--focus);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --background: #f2f2f0;
-  --surface: #ffffff;
-  --surface-raised: #f8f8f6;
-  --surface-hover: #ebeeea;
-  --surface-glass: rgb(255 255 255 / 96%);
-  --foreground: #1b1d20;
-  --muted-foreground: #535960;
-  --faint-foreground: #6b7279;
-  --seam: rgb(27 29 32 / 10%);
-  --seam-strong: rgb(27 29 32 / 18%);
-  --focus: #137747;
-  --accent: #168950;
-  --accent-strong: #0f6d3f;
-  --accent-ink: #ffffff;
-  --status-running: #167a49;
-  --status-starting: #915b00;
-  --status-broken: #b82445;
-  --status-occupied: #7543a8;
-  --status-stopped: #535960;
-  --glyph-blob: #135f9f;
-  --glyph-queue: #08724d;
-  --glyph-table: #693d9e;
-  --shadow-card: 0 1px 0 rgb(255 255 255 / 90%) inset, 0 12px 30px -20px rgb(28 36 32 / 30%), 0 0 0 1px rgb(20 24 20 / 4%);
-  --shadow-raised: 0 1px 0 rgb(255 255 255 / 95%) inset, 0 18px 40px -20px rgb(28 36 32 / 32%), 0 0 0 1px rgb(20 24 20 / 7%);
-  --primary-foreground: #06140d;
-  --accent-foreground: #06140d;
-}
+  --background: #edf0f4;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --secondary: #e6eaf0;
+  --muted: #f3f5f8;
+  --accent: #e4e9f1;
+  --border: rgb(20 28 44 / 10%);
+  --border-strong: rgb(20 28 44 / 20%);
+  --input: rgb(20 28 44 / 20%);
+  --foreground: #121822;
+  --card-foreground: #121822;
+  --popover-foreground: #121822;
+  --secondary-foreground: #121822;
+  --accent-foreground: #0b1018;
+  --muted-foreground: #4a5465;
+  --faint-foreground: #667082;
+  --primary: #1d5bd0;
+  --primary-foreground: #ffffff;
+  --ring: #1d5bd0;
+  --destructive: #b3203f;
 
-* { box-sizing: border-box; }
-html, body { width: 100%; height: 100%; min-width: 0; min-height: 0; }
-html { background: var(--background); }
-body {
-  margin: 0;
-  overflow: hidden;
-  color: var(--foreground);
-  background: var(--background);
-  font: 14px/1.5 "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  transition: color 220ms var(--ease-out), background-color 220ms var(--ease-out);
+  --status-running: #0f7a49;
+  --status-starting: #8a5700;
+  --status-broken: #b3203f;
+  --status-occupied: #6f3fa6;
+  --status-stopped: #4a5465;
+  --svc-blob: #1d5bd0;
+  --svc-queue: #0f7a49;
+  --svc-table: #6f3fa6;
+  --sidebar: #e3e8ef;
 }
-
-button, input, select { font: inherit; }
-button { color: inherit; }
-button:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-button:disabled { cursor: not-allowed; }
-code, .mono {
-  font-family: "Geist Mono Variable", "Geist Mono", Consolas, ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-}
-::selection { color: var(--accent-ink); background: var(--accent); }
 
 @theme inline {
   --font-heading: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-sans: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Geist Mono", Consolas, ui-monospace, monospace;
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-status-running: var(--status-running);
+  --color-status-starting: var(--status-starting);
+  --color-status-broken: var(--status-broken);
+  --color-status-occupied: var(--status-occupied);
+  --color-status-stopped: var(--status-stopped);
+  --color-svc-blob: var(--svc-blob);
+  --color-svc-queue: var(--svc-queue);
+  --color-svc-table: var(--svc-table);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -168,3 +145,34 @@ code, .mono {
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 }
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html, body { width: 100%; height: 100%; min-width: 0; min-height: 0; }
+  html { background: var(--background); }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    margin: 0;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+  }
+  code, kbd, pre, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  ::selection { background: var(--primary); color: var(--primary-foreground); }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
+}
+
+/* Status pulse for "starting" and the live MCP dot. Disabled for reduced motion. */
+@keyframes az-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.8); }
+}
+.az-pulse { animation: az-pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .az-pulse { animation: none; }
+  * { scroll-behavior: auto !important; }
+}
+
+/* Thin themed scrollbars for native overflow areas (log view, code blocks). */
+.az-scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }

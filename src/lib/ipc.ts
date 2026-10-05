@@ -8,6 +8,7 @@ import type {
   CommandResult,
   EventMap,
   EventName,
+  ServiceName,
 } from "./types";
 
 function isTauriRuntime() {
@@ -19,29 +20,75 @@ async function invokeCommand<K extends CommandName>(command: K, args: CommandArg
   return invoke<CommandResult<K>>(command, args as Record<string, unknown> | undefined);
 }
 
+// --- app / settings ---------------------------------------------------------
+
 export function getSnapshot() {
   return invokeCommand("get_snapshot", undefined);
 }
 
-export function setConfig(args: CommandMap["set_config"]["args"]) {
-  return invokeCommand("set_config", args);
+export function setSettings(settings: CommandMap["set_settings"]["args"]["settings"]) {
+  return invokeCommand("set_settings", { settings });
 }
 
 export function checkEngine() {
   return invokeCommand("check_engine", undefined);
 }
 
-export function startService(serviceName: CommandMap["start_service"]["args"]["serviceName"]) {
-  return invokeCommand("start_service", { serviceName });
+export function quitApp(mode: CommandMap["quit_app"]["args"]["mode"]) {
+  return invokeCommand("quit_app", { mode });
 }
 
-export function stopService(serviceName: CommandMap["stop_service"]["args"]["serviceName"]) {
-  return invokeCommand("stop_service", { serviceName });
+// --- instance CRUD ----------------------------------------------------------
+
+export function listInstances() {
+  return invokeCommand("list_instances", undefined);
 }
 
-export function restartService(serviceName: CommandMap["restart_service"]["args"]["serviceName"]) {
-  return invokeCommand("restart_service", { serviceName });
+export function suggestInstance(name?: string) {
+  return invokeCommand("suggest_instance", name ? { name } : {});
 }
+
+export function createInstance(request: CommandMap["create_instance"]["args"]["request"]) {
+  return invokeCommand("create_instance", { request });
+}
+
+export function updateInstance(request: CommandMap["update_instance"]["args"]["request"]) {
+  return invokeCommand("update_instance", { request });
+}
+
+export function deleteInstance(instanceId: string) {
+  return invokeCommand("delete_instance", { request: { instanceId } });
+}
+
+// --- instance lifecycle -----------------------------------------------------
+
+export function startInstance(instanceId: string) {
+  return invokeCommand("start_instance", { instanceId });
+}
+
+export function stopInstance(instanceId: string) {
+  return invokeCommand("stop_instance", { instanceId });
+}
+
+export function restartInstance(instanceId: string) {
+  return invokeCommand("restart_instance", { instanceId });
+}
+
+// --- one service within an instance ----------------------------------------
+
+export function startService(instanceId: string, serviceName: ServiceName) {
+  return invokeCommand("start_service", { instanceId, serviceName });
+}
+
+export function stopService(instanceId: string, serviceName: ServiceName) {
+  return invokeCommand("stop_service", { instanceId, serviceName });
+}
+
+export function restartService(instanceId: string, serviceName: ServiceName) {
+  return invokeCommand("restart_service", { instanceId, serviceName });
+}
+
+// --- every instance ---------------------------------------------------------
 
 export function startAll() {
   return invokeCommand("start_all", undefined);
@@ -55,13 +102,17 @@ export function restartAll() {
   return invokeCommand("restart_all", undefined);
 }
 
-export function identifyPortOwner(serviceName: CommandMap["identify_port_owner"]["args"]["serviceName"]) {
-  return invokeCommand("identify_port_owner", { serviceName });
+// --- ports ------------------------------------------------------------------
+
+export function identifyPortOwner(instanceId: string, serviceName: ServiceName) {
+  return invokeCommand("identify_port_owner", { instanceId, serviceName });
 }
 
 export function freePort(args: CommandMap["free_port"]["args"]) {
   return invokeCommand("free_port", args);
 }
+
+// --- logs -------------------------------------------------------------------
 
 export function getLogs(args: CommandMap["get_logs"]["args"] = {}) {
   return invokeCommand("get_logs", args);
@@ -71,21 +122,36 @@ export function saveLogs(args: CommandMap["save_logs"]["args"] = {}) {
   return invokeCommand("save_logs", args);
 }
 
-export function getConnectionString(serviceName: CommandMap["get_connection_string"]["args"]["serviceName"]) {
-  return invokeCommand("get_connection_string", { serviceName });
+export function clearLogs(instanceId?: string, serviceName?: ServiceName) {
+  return invokeCommand("clear_logs", { ...(instanceId ? { instanceId } : {}), ...(serviceName ? { serviceName } : {}) });
 }
 
-export function clearLogs(serviceName?: CommandMap["clear_logs"]["args"]["serviceName"]) {
-  return invokeCommand("clear_logs", serviceName ? { serviceName } : {});
+export function getAppLog(limit?: number) {
+  return invokeCommand("get_app_log", limit === undefined ? {} : { limit });
 }
 
-export function quitApp(mode: CommandMap["quit_app"]["args"]["mode"]) {
-  return invokeCommand("quit_app", { mode });
+// --- connection provisioning ------------------------------------------------
+
+export function getConnectionInfo(instanceId: string) {
+  return invokeCommand("get_connection_info", { instanceId });
 }
+
+/** Omit serviceName for the combined Blob+Queue+Table connection string. */
+export function getConnectionString(instanceId: string, serviceName?: ServiceName) {
+  return invokeCommand("get_connection_string", serviceName ? { instanceId, serviceName } : { instanceId });
+}
+
+// --- MCP --------------------------------------------------------------------
 
 export function getMcpStatus() {
   return invokeCommand("get_mcp_status", undefined);
 }
+
+export function restartMcp() {
+  return invokeCommand("restart_mcp", undefined);
+}
+
+// --- events -----------------------------------------------------------------
 
 export function subscribe<K extends EventName>(event: K, handler: (payload: EventMap[K]) => void): Promise<UnlistenFn> {
   if (isMockRuntime() || !isTauriRuntime()) return Promise.resolve(subscribeMock(event, handler));
@@ -94,8 +160,17 @@ export function subscribe<K extends EventName>(event: K, handler: (payload: Even
 
 export const aztrayIpc = {
   getSnapshot,
-  setConfig,
+  setSettings,
   checkEngine,
+  quitApp,
+  listInstances,
+  suggestInstance,
+  createInstance,
+  updateInstance,
+  deleteInstance,
+  startInstance,
+  stopInstance,
+  restartInstance,
   startService,
   stopService,
   restartService,
@@ -106,9 +181,11 @@ export const aztrayIpc = {
   freePort,
   getLogs,
   saveLogs,
-  getConnectionString,
   clearLogs,
-  quitApp,
+  getAppLog,
+  getConnectionInfo,
+  getConnectionString,
   getMcpStatus,
+  restartMcp,
   subscribe,
 };

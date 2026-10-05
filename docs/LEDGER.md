@@ -33,3 +33,26 @@
   restarting Blob changed its PID while Queue and Table remained running.
   Stop & quit exited the process and cleared ports 10000–10002. Relaunching
   left the tray app running idle with sign-in startup intact.
+
+## v0.3.0 — multi-instance, provisioning, robust MCP (issue #1)
+
+- Root cause of the unreachable MCP endpoint: no released build contained the
+  MCP server. Tags v0.1.1 to v0.1.5 predate the MCP commit (6f61a65), and
+  `releases/latest` served v0.1.5. Bind failures were also invisible (stderr in a
+  windowed exe, no log file, no port fallback, no retry).
+- Added multiple concurrent Azurite instances with automatic port-trio
+  allocation, per-instance data directories, config schema 2 with automatic
+  v1 migration and backup, and per-instance connection strings.
+- MCP now enabled by default with port fallback, a self-verifying supervisor
+  with retry, status in the snapshot and UI (popover footer, Local MCP card with
+  Retry), instance-aware tools including `aztray_create_instance`, and
+  `aztray_get_app_log`.
+- Added `%APPDATA%\AzTray\logs\aztray.log` (1 MB rotation), an About panel
+  with version and feature list, and a Diagnostics log tail.
+- Release workflow now runs `cargo test` and asserts the built exe contains
+  `aztray_mcp_status`; version bumped to 0.3.0 across `package.json`,
+  `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`.
+- Redesigned dashboard and popover (instance rail, connection panel, MCP and
+  diagnostics settings); screenshots live in `docs/screenshots/`.
+- Pending after tagging `v0.3.0`: install the published release through
+  `scripts/install.ps1` and confirm `aztray_mcp_status` reports `running:true`.

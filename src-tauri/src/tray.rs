@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crate::engine::AppEngine;
+use crate::AppState;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -13,8 +15,14 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open AzTray", true, None::<&str>)?;
     let dashboard = MenuItem::with_id(app, "dashboard", "Open dashboard", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
+    let start_all = MenuItem::with_id(app, "start_all", "Start all instances", true, None::<&str>)?;
+    let stop_all = MenuItem::with_id(app, "stop_all", "Stop all instances", true, None::<&str>)?;
+    let separator_two = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit AzTray…", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &dashboard, &separator, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&open, &dashboard, &separator, &start_all, &stop_all, &separator_two, &quit],
+    )?;
 
     let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
     TrayIconBuilder::with_id("aztray-tray")
@@ -29,6 +37,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             "dashboard" => {
                 let _ = show_main(app);
             }
+            "start_all" => run_in_background(app, "start all instances", |engine| engine.start_all().map(|_| ())),
+            "stop_all" => run_in_background(app, "stop all instances", |engine| engine.stop_all().map(|_| ())),
             "quit" => {
                 let _ = request_quit(app);
             }
@@ -48,6 +58,23 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .build(app)?;
 
     Ok(())
+}
+
+/// Run a blocking engine action off the UI thread; failures go to aztray.log
+/// and the dashboard opens so the user can see per-service errors.
+fn run_in_background(
+    app: &AppHandle,
+    label: &'static str,
+    action: impl FnOnce(AppEngine) -> Result<(), String> + Send + 'static,
+) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let engine = app.state::<AppState>().engine.clone();
+        if let Err(error) = action(engine) {
+            crate::logs::app_log(crate::types::LogLevel::Error, &format!("tray: {label} failed: {error}"));
+            let _ = show_main(&app);
+        }
+    });
 }
 
 pub fn toggle_popover(app: &AppHandle) -> tauri::Result<()> {

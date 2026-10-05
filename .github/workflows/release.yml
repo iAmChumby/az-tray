@@ -31,8 +31,30 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
       - name: Build NSIS installer
         run: npm run tauri build
+
+      - name: Assert built binary contains the MCP server
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target/release/az-tray.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Built binary not found: $exe" }
+          $marker = [Text.Encoding]::ASCII.GetBytes("aztray_mcp_status")
+          $bytes = [IO.File]::ReadAllBytes($exe)
+          $found = $false
+          for ($i = 0; $i -le $bytes.Length - $marker.Length -and -not $found; $i++) {
+            if ($bytes[$i] -ne $marker[0]) { continue }
+            $match = $true
+            for ($j = 1; $j -lt $marker.Length; $j++) {
+              if ($bytes[$i + $j] -ne $marker[$j]) { $match = $false; break }
+            }
+            if ($match) { $found = $true }
+          }
+          if (-not $found) { throw "az-tray.exe does not contain 'aztray_mcp_status'; refusing to publish a build without MCP." }
+          Write-Host "Verified MCP marker in $exe"
 
       - name: Normalize release assets
         shell: pwsh
